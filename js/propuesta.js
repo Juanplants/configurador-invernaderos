@@ -210,7 +210,10 @@ const PROPUESTA = {
       sin_dato: 'Sin dato del fabricante'
     };
     const s = sitio || {};
-    const origen = (o) => o === 'municipio' ? 'CTE DB SE-AE, por municipio' : o === 'manual' ? 'introducido a mano' : '';
+    const origen = (o) => ({
+      zona: `CTE DB SE-AE, zona eólica ${this._esc(s.zona_eolica || '')}`, capital: `CTE DB SE-AE, tabla 3.8 (${this._esc(s.capital || '')})`,
+      tabla: 'CTE DB SE-AE, tabla E.2', municipio: 'CTE DB SE-AE', manual: 'introducido a mano'
+    })[o] || '';
     const valor = (v, d, ud) => (v === '' || v === undefined || v === null) ? '—' : `${this._num(v, d)} ${ud}`;
     const declarado = (v, ud) => (v > 0 ? `${this._num(v, 0)} ${ud}${m}` : 'no declarado');
     const filaCarga = (txt, vSitio, d, ud, o, vDecl, res) => `<tr><td>${txt}</td><td>${valor(vSitio, d, ud)}${o ? `<br><small>${origen(o)}</small>` : ''}</td>`
@@ -229,12 +232,15 @@ const PROPUESTA = {
           ${fila('Cultivo colgado', modelo.cultivo_colgado, 'kg/m²')}
           ${fila('Equipamiento', modelo.equipamiento, 'kg/m²')}
         </table>
-        ${e || mun || s.pendiente !== '' ? `
+        ${e || mun || s.zona_eolica || s.pendiente !== '' ? `
         <h4>Emplazamiento</h4>
         <table class="tabla">
-          ${mun ? `<tr><td>Municipio</td><td>${this._esc(mun.nombre)} (${this._esc(mun.provincia)}) · altitud ${this._num(mun.altitud, 0)} m</td></tr>
-          <tr><td>Zona eólica / zona climática de invierno</td><td>${this._esc(mun.zona_eolica)} / ${mun.zona_invierno}</td></tr>` : ''}
-          <tr><td>Categoría de terreno</td><td>${this._esc(s.categoria || '—')}${c && c.viento.ce !== null ? ` · c<sub>e</sub> ${f2(c.viento.ce)} a ${this._num(c.viento.altura, 1)} m, q<sub>e</sub> ${f2(c.viento.qe)} kN/m² (informativo)` : ''}</td></tr>
+          ${mun ? `<tr><td>Municipio</td><td>${this._esc(mun.nombre)} (${this._esc(mun.provincia)})</td></tr>` : ''}
+          ${s.zona_eolica ? `<tr><td>Zona eólica (fig. D.1)</td><td>${this._esc(s.zona_eolica)}</td></tr>` : ''}
+          ${s.capital ? `<tr><td>Nieve</td><td>Capital de provincia: ${this._esc(s.capital)} (tabla 3.8)</td></tr>`
+            : s.zona_invierno !== '' && s.zona_invierno !== undefined ? `<tr><td>Zona de clima invernal (fig. E.2)</td><td>${s.zona_invierno}</td></tr>` : ''}
+          ${s.altitud !== '' && s.altitud !== undefined ? `<tr><td>Altitud</td><td>${this._num(s.altitud, 0)} m</td></tr>` : ''}
+          <tr><td>Categoría de terreno</td><td>${this._esc(s.categoria || '—')}${c && c.viento && c.viento.ce !== null ? ` · c<sub>e</sub> ${f2(c.viento.ce)} a ${this._num(c.viento.altura, 1)} m, q<sub>e</sub> ${f2(c.viento.qe)} kN/m² (informativo)` : ''}</td></tr>
           ${s.pendiente !== '' && s.pendiente !== undefined ? `<tr><td>Pendiente del terreno</td><td>${this._num(s.pendiente, 1)} %</td></tr>` : ''}
         </table>` : ''}
         ${e ? `
@@ -242,12 +248,13 @@ const PROPUESTA = {
         <table class="tabla tabla-cargas">
           <tr><th>Carga</th><th>Sitio</th><th>Declarada</th><th>Resultado</th></tr>
           ${filaCarga('Viento', s.viento_kmh, 1, 'km/h', s.origen_viento, modelo.viento_cerrado, e.viento)}
-          ${filaCarga('Nieve', s.nieve_kgm2, 0, 'kg/m²', s.origen_nieve, modelo.nieve, e.nieve)}
+          ${s.fuera ? `<tr><td>Nieve</td><td>Fuera de tabla<br><small>CTE DB SE-AE, tabla E.2: zona ${s.fuera.zona} a ${this._num(s.fuera.altitud, 0)} m (la tabla llega a ${this._num(s.fuera.ultima, 0)} m)</small></td><td>${declarado(modelo.nieve, 'kg/m²')}</td><td><strong>Requiere estudio</strong></td></tr>`
+            : filaCarga('Nieve', s.nieve_kgm2, 0, 'kg/m²', s.origen_nieve, modelo.nieve, e.nieve)}
           <tr class="total"><td colspan="3">Resultado</td><td><strong>${textoApto[e.resultado]}</strong></td></tr>
         </table>
         <p class="nota">Comparación orientativa de las cargas del sitio con las declaradas por el fabricante del modelo; <strong>no sustituye al cálculo estructural</strong>.
         Viento del sitio: velocidad básica de la zona eólica (CTE DB SE-AE, anejo D), frente al viento máximo declarado con el invernadero cerrado.
-        Nieve del sitio: sobrecarga en terreno horizontal según zona de invierno y altitud (anejo E). Al límite = a menos de un 10 % de lo declarado.</p>
+        Nieve del sitio: sobrecarga en terreno horizontal según zona de clima invernal y altitud (tabla E.2) o la de la capital (tabla 3.8). Al límite = a menos de un 10 % de lo declarado.</p>
         ` : ''}
         ${this._notaEstimados(ctx)}
       </section>
