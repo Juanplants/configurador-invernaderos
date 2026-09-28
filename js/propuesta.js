@@ -161,9 +161,10 @@ const PROPUESTA = {
         <p>
           A continuación se incluyen los planos del invernadero: planta general,
           alzado frontal, alzado lateral y sección transversal. Todas las cotas
-          están expresadas en metros. La planta está dibujada a escala sobre A3
-          (1:${planos.planta.escala}); reducida en este documento, la escala
-          válida es la gráfica. Las vistas son orientativas y no contractuales.
+          están expresadas en metros. Cada plano está dibujado a escala sobre A3
+          (planta 1:${planos.planta.escala}, sección 1:${planos.seccion.escala});
+          reducidos en este documento, la escala válida es la gráfica de cada
+          plano. Las vistas son orientativas y no contractuales.
         </p>
         <h4>Planta general</h4>
         <div class="plano-wrap">${svg(planos.planta)}</div>

@@ -395,25 +395,26 @@ function renderMateriales({ r }) {
   `;
 }
 
-// Planos: la planta ya es una hoja A3 a escala (js/planos/); alzados y
-// sección siguen con el dibujo de la v0.3 hasta rehacerlos igual.
+// Planos: cuatro hojas A3 a escala (js/planos/). La ventana que dibujan sale
+// del resultado del motor, así coincide con la lista de materiales.
 const PLANOS_VISTAS = { planta: 'planta', 'alzado-frontal': 'alzadoFrontal', 'alzado-lateral': 'alzadoLateral', seccion: 'seccion' };
 
+function ventanasDelProyecto(r) {
+  const g = r.geometria, v = r.ventilacion;
+  const lineas = v.lineas_cenital || 0;
+  const longitud = g.naves * lineas * g.long_ventana_cenital;
+  return {
+    ventana: lineas ? { lineas, hoja: g.ancho_hoja, rendija: longitud > 0 ? v.cenital_geometrica / longitud : g.ancho_hoja } : null,
+    lateral: v.lateral_geometrica > 0 ? { alto: v.lateral_geometrica / (2 * g.largo) } : null
+  };
+}
+
 function plano(r, clave) {
-  const g = r.geometria;
-  const modelo = getModelo();
-  const antiguo = (svg) => ({ svg, viewBox: '0 0 900 520' });
-  switch (clave) {
-    case 'planta':
-      return PLANOS_A3.planta({
-        g, modelo, empresa: CATALOGO.empresa || {},
-        proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
-        fecha: new Date().toLocaleDateString('es-ES')
-      });
-    case 'alzadoFrontal': return antiguo(PLANOS.alzadoFrontal(state, g, modelo));
-    case 'alzadoLateral': return antiguo(PLANOS.alzadoLateral(state, g, modelo));
-    case 'seccion':       return antiguo(PLANOS.seccion(state, g, modelo, perfilesUsados(r)));
-  }
+  return PLANOS_A3[clave](Object.assign({
+    g: r.geometria, modelo: getModelo(), empresa: CATALOGO.empresa || {},
+    proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
+    fecha: new Date().toLocaleDateString('es-ES')
+  }, ventanasDelProyecto(r)));
 }
 
 function generarPlanos(r) {
