@@ -18,8 +18,15 @@
     modelo: 'texto', naves: 'numero', tramos: 'numero', altura_canal: 'numeroONulo',
     ancho_nave: 'numeroONulo', separacion: 'numeroONulo', puertas: 'numero',
     seleccion: 'objeto', opcionales: 'lista', zona: 'texto', viento_kmh: 'numeroOVacio',
-    parcela: 'objeto', cliente: 'texto', ubicacion: 'texto', codigoProyecto: 'texto', vistaActual: 'texto'
+    parcela: 'objeto', cliente: 'texto', ubicacion: 'texto', codigoProyecto: 'texto', vistaActual: 'texto',
+    // Fase 6: parcela del Catastro (polígono en metros e implantación elegida), retranqueos y perfil
+    terreno: 'terreno', retranqueo: 'numero', camino: 'numero', perfil: 'texto'
   };
+  // Polígono: anillos de puntos [x, y] numéricos, el exterior con 3 o más
+  const esPunto = (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);
+  const esTerreno = (v) => v === null || (v !== null && typeof v === 'object' && Array.isArray(v.anillos) && v.anillos.length > 0
+    && v.anillos.every(a => Array.isArray(a) && a.length >= 3 && a.every(esPunto))
+    && (v.implantacion == null || ['cx', 'cy', 'azimut', 'largo', 'ancho'].every(k => Number.isFinite(v.implantacion[k]))));
 
   // Huella del catálogo: FNV-1a de 32 bits sobre su JSON. Cambia con cualquier
   // cambio de contenido, aunque se mantengan el nombre y la versión.
@@ -79,11 +86,12 @@
         numeroONulo: v === null || (typeof v === 'number' && Number.isFinite(v)),
         numeroOVacio: v === '' || (typeof v === 'number' && Number.isFinite(v)),
         objeto: v !== null && typeof v === 'object' && !Array.isArray(v),
-        lista: Array.isArray(v)
+        lista: Array.isArray(v),
+        terreno: esTerreno(v)
       }[tipo];
       if (v === undefined) continue; // campo ausente: se queda el valor por defecto
       if (!ok) { errores.push(`Dato «${k}» con un valor no válido.`); continue; }
-      estado[k] = tipo === 'lista' ? v.slice() : (tipo === 'objeto' ? JSON.parse(JSON.stringify(v)) : v);
+      estado[k] = tipo === 'lista' ? v.slice() : ((tipo === 'objeto' || tipo === 'terreno') && v ? JSON.parse(JSON.stringify(v)) : v);
     }
     if (errores.length) return { estado: null, errores, avisos };
 
