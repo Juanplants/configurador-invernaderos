@@ -18,132 +18,196 @@
     </div>
   </header>
 
+  <!-- ============ BARRA DE PASOS (apartado 2 de la especificación) ============ -->
+  <nav class="barra-pasos" id="barra-pasos" aria-label="Pasos del proyecto">
+    <button class="paso-boton" data-ir="proyecto"><span class="num">1</span> Proyecto</button>
+    <button class="paso-boton" data-ir="emplazamiento"><span class="num">2</span> Emplazamiento</button>
+    <button class="paso-boton" data-ir="geometria"><span class="num">3</span> Geometr&iacute;a</button>
+    <button class="paso-boton" data-ir="envolvente"><span class="num">4</span> Envolvente</button>
+    <button class="paso-boton" data-ir="revision"><span class="num">5</span> Revisi&oacute;n <span class="marca-avisos" id="marca-avisos"></span></button>
+    <button class="paso-boton" data-ir="salidas"><span class="num">6</span> Salidas</button>
+  </nav>
+
   <main class="layout">
-    <!-- ============ PANEL IZQUIERDO: CONFIGURACIÓN ============ -->
-    <aside class="config-panel">
-      <h2>Modelo base</h2>
-      <div class="field">
-        <select id="model-select"></select>
-      </div>
-      <p class="hint" id="model-description"></p>
+    <!-- ============ PANEL IZQUIERDO: EL PASO ACTUAL ============ -->
+    <div class="pasos-panel">
+      <div class="resumen-corto" id="resumen-corto"></div>
 
-      <h2>Geometr&iacute;a</h2>
-      <div class="field-row">
+      <!-- 1. Proyecto -->
+      <section class="paso config-panel" data-paso="proyecto">
+        <h2>1. Proyecto</h2>
         <div class="field">
-          <label>N.&ordm; de naves</label>
-          <input type="number" id="num-naves" min="1" max="30" value="3">
+          <label>C&oacute;digo del proyecto</label>
+          <input type="text" id="codigo-proyecto" placeholder="Ej. 26JD001">
         </div>
         <div class="field">
-          <label>Ancho de nave</label>
-          <select id="ancho-nave"></select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Tramos entre p&oacute;rticos</label>
-          <input type="number" id="num-tramos" min="1" max="100" value="11">
+          <label>Cliente</label>
+          <input type="text" id="cliente" placeholder="Nombre del cliente">
         </div>
         <div class="field">
-          <label>Separaci&oacute;n</label>
-          <select id="separacion"></select>
+          <label>Ubicaci&oacute;n</label>
+          <input type="text" id="ubicacion" placeholder="Localidad, provincia">
         </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Altura a canal</label>
-          <select id="altura-canal"></select>
-        </div>
-        <div class="field">
-          <label>Puertas</label>
-          <input type="number" id="puertas" min="0" max="20" value="1">
-        </div>
-      </div>
+        <p class="hint">&iquest;Ya empezado? Abre el archivo .json guardado en «Salidas».</p>
+        <button id="btn-abrir-proyecto" class="btn-secundario">&#128194; Abrir proyecto</button>
+        <input type="file" id="archivo-proyecto" accept=".json,application/json" hidden>
+      </section>
 
-      <h2>Envolvente</h2>
-      <div id="opciones"></div>
+      <!-- 2. Emplazamiento -->
+      <section class="paso config-panel" data-paso="emplazamiento" hidden>
+        <h2>2. Emplazamiento</h2>
+        <div class="field-row">
+          <div class="field">
+            <label>Zona (obra local)</label>
+            <select id="zona"></select>
+          </div>
+          <div class="field">
+            <label>Viento de dise&ntilde;o del sitio (km/h)</label>
+            <input type="number" id="viento" min="0" placeholder="Opcional">
+          </div>
+        </div>
+        <div id="aptitud-modelos"></div>
+        <h2>Parcela</h2>
+        <p class="hint">Opcional: la del Catastro o un rect&aacute;ngulo a mano. Activa el plano de emplazamiento y el optimizador.</p>
+        <button id="btn-cargar-parcela" class="btn-secundario">&#128506; Cargar parcela del Catastro (GML o KML)</button>
+        <input type="file" id="archivo-parcela" accept=".gml,.kml,.xml" hidden>
+        <div id="parcela-info"></div>
+        <div class="field-row parcela-manual">
+          <div class="field">
+            <label>Largo de la parcela (m)</label>
+            <input type="number" id="parcela-largo" min="0" step="0.1" placeholder="—">
+          </div>
+          <div class="field">
+            <label>Ancho de la parcela (m)</label>
+            <input type="number" id="parcela-ancho" min="0" step="0.1" placeholder="—">
+          </div>
+        </div>
+        <div class="field-row parcela-manual">
+          <div class="field">
+            <label>Lado largo respecto al norte (&deg;)</label>
+            <input type="number" id="parcela-orientacion" min="0" max="360" step="1" value="0">
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <label class="opt"><input type="checkbox" id="parcela-girado"><span>Invernadero girado 90&deg;</span></label>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Retranqueo a linderos (m)</label>
+            <input type="number" id="retranqueo" min="0" step="0.5" value="3">
+          </div>
+          <div class="field">
+            <label>Camino perimetral (m)</label>
+            <input type="number" id="camino" min="0" step="0.5" value="4">
+          </div>
+        </div>
+        <p class="hint">Distancia m&iacute;nima del invernadero al lindero: la mayor de las dos (el camino puede ir dentro del retranqueo). Rev&iacute;sala con la normativa municipal.</p>
+        <div class="field">
+          <label>Orientaci&oacute;n preferida de la cumbrera</label>
+          <select id="orientacion-preferida"></select>
+        </div>
+      </section>
 
-      <h2>Emplazamiento</h2>
-      <div class="field">
-        <label>Zona (obra local)</label>
-        <select id="zona"></select>
-      </div>
-      <div class="field">
-        <label>Viento de dise&ntilde;o del sitio (km/h)</label>
-        <input type="number" id="viento" min="0" placeholder="Opcional: compara con el declarado">
-      </div>
-      <p class="hint">Parcela (opcional): la del Catastro o un rect&aacute;ngulo a mano. Activa el plano de emplazamiento.</p>
-      <button id="btn-cargar-parcela" class="btn-secundario">&#128506; Cargar parcela del Catastro (GML o KML)</button>
-      <input type="file" id="archivo-parcela" accept=".gml,.kml,.xml" hidden>
-      <div id="parcela-info"></div>
-      <div class="field-row parcela-manual">
+      <!-- 3. Geometría -->
+      <section class="paso config-panel" data-paso="geometria" hidden>
+        <h2>3. Geometr&iacute;a</h2>
         <div class="field">
-          <label>Largo de la parcela (m)</label>
-          <input type="number" id="parcela-largo" min="0" step="0.1" placeholder="—">
+          <label>Modelo base</label>
+          <select id="model-select"></select>
         </div>
-        <div class="field">
-          <label>Ancho de la parcela (m)</label>
-          <input type="number" id="parcela-ancho" min="0" step="0.1" placeholder="—">
+        <p class="hint" id="model-description"></p>
+        <div class="field-row">
+          <div class="field">
+            <label>N.&ordm; de naves</label>
+            <input type="number" id="num-naves" min="1" max="30" value="3">
+          </div>
+          <div class="field">
+            <label>Ancho de nave</label>
+            <select id="ancho-nave"></select>
+          </div>
         </div>
-      </div>
-      <div class="field-row parcela-manual">
-        <div class="field">
-          <label>Lado largo respecto al norte (&deg;)</label>
-          <input type="number" id="parcela-orientacion" min="0" max="360" step="1" value="0">
+        <div class="field-row">
+          <div class="field">
+            <label>Tramos entre p&oacute;rticos</label>
+            <input type="number" id="num-tramos" min="1" max="100" value="11">
+          </div>
+          <div class="field">
+            <label>Separaci&oacute;n</label>
+            <select id="separacion"></select>
+          </div>
         </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <label class="opt"><input type="checkbox" id="parcela-girado"><span>Invernadero girado 90&deg;</span></label>
+        <div class="field-row">
+          <div class="field">
+            <label>Altura a canal</label>
+            <select id="altura-canal"></select>
+          </div>
+          <div class="field"></div>
         </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Retranqueo a linderos (m)</label>
-          <input type="number" id="retranqueo" min="0" step="0.5" value="3">
-        </div>
-        <div class="field">
-          <label>Camino perimetral (m)</label>
-          <input type="number" id="camino" min="0" step="0.5" value="4">
-        </div>
-      </div>
-      <p class="hint">Distancia m&iacute;nima del invernadero al lindero: la mayor de las dos (el camino puede ir dentro del retranqueo). Rev&iacute;sala con la normativa municipal.</p>
-      <div class="field-row">
+        <h2>Desde el terreno</h2>
+        <p class="hint">Con la parcela del paso 2, el optimizador propone las 3 mejores implantaciones.</p>
         <div class="field">
           <label>Prioridad del optimizador</label>
           <select id="perfil"></select>
         </div>
-        <div class="field">
-          <label>Orientaci&oacute;n preferida</label>
-          <select id="orientacion-preferida"></select>
+        <button id="btn-optimizar" class="btn-secundario">&#128269; Buscar las 3 mejores implantaciones</button>
+        <div class="optimizador-box" id="optimizador" hidden></div>
+      </section>
+
+      <!-- 4. Envolvente -->
+      <section class="paso config-panel" data-paso="envolvente" hidden>
+        <h2>4. Envolvente</h2>
+        <div id="opciones"></div>
+        <div class="field-row">
+          <div class="field">
+            <label>Puertas</label>
+            <input type="number" id="puertas" min="0" max="20" value="1">
+          </div>
+          <div class="field"></div>
         </div>
-      </div>
-      <button id="btn-optimizar" class="btn-secundario">&#128269; Buscar las 3 mejores implantaciones</button>
+      </section>
 
-      <h2>Proyecto</h2>
-      <div class="field">
-        <label>C&oacute;digo del proyecto</label>
-        <input type="text" id="codigo-proyecto" placeholder="Ej. 26JD001">
-      </div>
-      <div class="field">
-        <label>Cliente</label>
-        <input type="text" id="cliente" placeholder="Nombre del cliente">
-      </div>
-      <div class="field">
-        <label>Ubicaci&oacute;n</label>
-        <input type="text" id="ubicacion" placeholder="Localidad, provincia">
-      </div>
-      <div class="field-row">
-        <button id="btn-guardar-proyecto" class="btn-secundario">&#128190; Guardar proyecto</button>
-        <button id="btn-abrir-proyecto" class="btn-secundario">&#128194; Abrir proyecto</button>
-      </div>
-      <input type="file" id="archivo-proyecto" accept=".json,application/json" hidden>
+      <!-- 5. Revisión -->
+      <section class="paso" data-paso="revision" hidden>
+        <div class="summary-box" id="summary"></div>
+        <div class="specs-box" id="materiales"></div>
+      </section>
 
-      <button id="btn-propuesta" class="btn-primary">📄 Generar propuesta comercial</button>
-    </aside>
+      <!-- 6. Salidas -->
+      <section class="paso config-panel" data-paso="salidas" hidden>
+        <h2>6. Salidas</h2>
+        <div class="salidas-lista">
+          <div class="salida">
+            <div><strong>Planos A3 en PDF</strong><p class="hint" id="pdf-estado">Imprimir en A3 al 100 % (tama&ntilde;o real) para que la escala sea exacta.</p></div>
+            <div class="salida-botones">
+              <button id="btn-pdf-todos" class="btn-secundario">&#11015; Todos los planos</button>
+              <button id="btn-pdf-hoja" class="btn-secundario">&#11015; La hoja que se ve</button>
+            </div>
+          </div>
+          <div class="salida">
+            <div><strong>Propuesta comercial</strong><p class="hint">Vista previa imprimible: A4 con los planos en A3.</p></div>
+            <div class="salida-botones"><button id="btn-propuesta" class="btn-secundario">&#128196; Generar propuesta</button></div>
+          </div>
+          <div class="salida">
+            <div><strong>Lista de materiales en Excel</strong><p class="hint">Con precios y hoja de petici&oacute;n de oferta sin precios.</p></div>
+            <div class="salida-botones"><button id="btn-excel" class="btn-secundario">&#11015; Excel</button></div>
+          </div>
+          <div class="salida">
+            <div><strong>Archivo del proyecto</strong><p class="hint">Todo lo introducido, para abrirlo m&aacute;s tarde.</p></div>
+            <div class="salida-botones"><button id="btn-guardar-proyecto" class="btn-secundario">&#128190; Guardar proyecto</button></div>
+          </div>
+        </div>
+      </section>
 
-    <!-- ============ PANEL DERECHO: VISTA PREVIA ============ -->
+      <div class="pasos-navegacion">
+        <button id="btn-anterior" class="btn-secundario">&larr; Anterior</button>
+        <span class="hint" id="paso-actual"></span>
+        <button id="btn-siguiente" class="btn-siguiente">Siguiente &rarr;</button>
+      </div>
+    </div>
+
+    <!-- ============ PANEL DERECHO: PLANO (siempre visible) ============ -->
     <section class="preview-panel">
-
-      <!-- Tabs de vistas -->
       <div class="tabs">
         <button class="tab active" data-vista="planta">Planta</button>
         <button class="tab" data-vista="alzado-frontal">Alzado frontal</button>
@@ -151,25 +215,9 @@
         <button class="tab" data-vista="seccion">Secci&oacute;n transversal</button>
         <button class="tab" data-vista="emplazamiento">Emplazamiento</button>
       </div>
-
-      <!-- SVG del plano -->
       <div class="plan-box">
         <svg id="plan" viewBox="0 0 900 520"></svg>
-        <div class="plan-acciones">
-          <button id="btn-pdf-todos" class="btn-secundario">&#11015; Descargar planos (PDF A3)</button>
-          <button id="btn-pdf-hoja" class="btn-secundario">&#11015; Esta hoja (PDF)</button>
-          <span class="hint" id="pdf-estado">Imprimir en A3 al 100 % (tama&ntilde;o real) para que la escala sea exacta.</span>
-        </div>
       </div>
-
-      <!-- Optimizador: las 3 mejores implantaciones -->
-      <div class="optimizador-box" id="optimizador" hidden></div>
-
-      <!-- Resumen, avisos y precio -->
-      <div class="summary-box" id="summary"></div>
-
-      <!-- Lista de materiales con «ver cálculo» -->
-      <div class="specs-box" id="materiales"></div>
     </section>
   </main>
 
@@ -218,6 +266,7 @@
   <script src="js/proyecto.js"></script>
   <script src="js/excel.js"></script>
   <script src="js/propuesta.js"></script>
+  <script src="js/pasos.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const XLSX = require('../lib/xlsx.mini.min.js');
 const EXPORTAR = require('../js/exportar.js');
+const { irA } = require('./navegador_pasos.js');
 
 let chromium;
 try {
@@ -54,14 +55,19 @@ function comprobar(nombre, condicion, detalle) {
 
   // ---------- 1. Proyecto ----------
   console.log('1. Guardar y abrir proyecto');
+  await p.fill('#codigo-proyecto', '26JD001'); await p.fill('#cliente', 'Finca La Prueba'); await p.fill('#ubicacion', 'Níjar');
+  await irA(p, 'emplazamiento');
+  await p.fill('#viento', '90');
+  await p.fill('#parcela-largo', '150'); await p.fill('#parcela-ancho', '80'); await p.fill('#parcela-orientacion', '30'); await p.check('#parcela-girado');
+  await irA(p, 'geometria');
   await p.selectOption('#model-select', 'MT-GOT-96');
   await p.fill('#num-naves', '6'); await p.fill('#num-tramos', '22');
   await p.selectOption('#altura-canal', '5');
+  await irA(p, 'envolvente');
   await p.selectOption('[data-grupo="ventilacion_cenital"]', 'C21');
   await p.uncheck('[data-grupo="ventilacion_lateral"]');
-  await p.fill('#puertas', '2'); await p.fill('#viento', '90');
-  await p.fill('#codigo-proyecto', '26JD001'); await p.fill('#cliente', 'Finca La Prueba'); await p.fill('#ubicacion', 'Níjar');
-  await p.fill('#parcela-largo', '150'); await p.fill('#parcela-ancho', '80'); await p.fill('#parcela-orientacion', '30'); await p.check('#parcela-girado');
+  await p.fill('#puertas', '2');
+  await irA(p, 'salidas');
   await p.click('.tab[data-vista="seccion"]');
   const campos = ['#model-select', '#num-naves', '#num-tramos', '#altura-canal', '[data-grupo="ventilacion_cenital"]', '#puertas', '#viento',
     '#codigo-proyecto', '#cliente', '#ubicacion', '#parcela-largo', '#parcela-ancho', '#parcela-orientacion'];
@@ -78,6 +84,7 @@ function comprobar(nombre, condicion, detalle) {
   comprobar('nombre del proyecto', guardado.nombre === `26JD001_proyecto_${hoy}.json`, guardado.nombre);
 
   await p.goto(url); // pantalla nueva, valores por defecto
+  comprobar('al recargar se empieza en el paso 1', await p.locator('.paso-boton.actual').getAttribute('data-ir') === 'proyecto');
   const vacia = await foto();
   comprobar('tras recargar, la pantalla ha cambiado', JSON.stringify(vacia) !== JSON.stringify(antes));
   await p.setInputFiles('#archivo-proyecto', guardado.destino);
@@ -106,12 +113,15 @@ function comprobar(nombre, condicion, detalle) {
   await p.waitForSelector('body.dialogo-abierto');
   await p.click('#btn-cerrar-dialogo');
 
+  comprobar('un proyecto abierto deja ir a cualquier paso', await p.locator('.paso-boton:disabled').count() === 0);
   // ---------- 2. Excel ----------
   console.log('2. Lista de materiales en Excel');
+  await irA(p, 'salidas');
   const excel = await bajar('#btn-excel');
   comprobar('nombre del Excel', excel.nombre === `26JD001_materiales_${hoy}.xlsx`, excel.nombre);
   const libro = XLSX.read(fs.readFileSync(excel.destino));
   comprobar('hojas Materiales y Petición de oferta', JSON.stringify(libro.SheetNames) === '["Materiales","Petición de oferta"]');
+  await irA(p, 'revision');
   const filasPantalla = (await p.locator('.tabla-materiales tr').count());
   const m = XLSX.utils.sheet_to_json(libro.Sheets.Materiales, { header: 1 });
   const total = m.find(f => f[1] === 'Total');
@@ -121,8 +131,10 @@ function comprobar(nombre, condicion, detalle) {
 
   // ---------- 3. Propuesta ----------
   console.log('3. Propuesta impresa');
+  await irA(p, 'salidas');
   await p.click('#btn-propuesta');
   await p.emulateMedia({ media: 'print' });
+  comprobar('en impresión no sale la barra de pasos', await p.$eval('#barra-pasos', el => getComputedStyle(el).display) === 'none');
   const medidas = await p.$$eval('section.hoja-a3 svg.plano-a3', svgs => svgs.map(s => { const r = s.getBoundingClientRect(); return [r.width, r.height]; }));
   const mm = (px) => px * 25.4 / 96;
   comprobar('5 planos en la propuesta', medidas.length === 5, `${medidas.length}`);

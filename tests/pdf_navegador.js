@@ -16,6 +16,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const os = require('os');
 const EXPORTAR = require('../js/exportar.js');
+const { irA } = require('./navegador_pasos.js');
 
 let fallos = 0, ok = 0;
 function comprobar(nombre, condicion, detalle) {
@@ -80,13 +81,16 @@ const textoDe = (c) => [...c.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)].map(m => m[1
   };
 
   // Sin parcela: 4 hojas
+  await irA(pagina, 'salidas');
   const sin = await bajar('#btn-pdf-todos');
   comprobar('sin parcela: 4 páginas', sin.pdf.contenidos.length === 4, `${sin.pdf.contenidos.length}`);
 
   // Con parcela: 5 hojas
+  await irA(pagina, 'emplazamiento');
   await pagina.fill('#parcela-largo', '70');
   await pagina.fill('#parcela-ancho', '45');
   await pagina.fill('#parcela-orientacion', '30');
+  await irA(pagina, 'salidas');
   const todo = await bajar('#btn-pdf-todos');
   comprobar('nombre del PDF completo', todo.nombre === `26JD001_planos_${hoy}.pdf`, todo.nombre);
   const { mediaBoxes, contenidos, bruto } = todo.pdf;
