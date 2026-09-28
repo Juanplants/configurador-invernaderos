@@ -14,7 +14,7 @@
 
   // Aptitud del modelo para el sitio: compara viento (km/h) y nieve (kg/m²)
   function emplazamiento(modelo, sitio, cfg = CONFIG) {
-    if (!sitio || (sitio.viento_kmh === undefined && sitio.nieve === undefined)) return null;
+    if (!sitio || (sitio.viento_kmh === undefined && sitio.nieve === undefined && !sitio.nieve_fuera)) return null;
     const comprobar = (sitioV, declarado) => {
       if (sitioV === undefined || declarado === undefined) return 'apto';
       if (sitioV > declarado) return 'no_apto';
@@ -24,9 +24,11 @@
     const viento = comprobar(sitio.viento_kmh, modelo.viento_cerrado);
     // Nieve: si el sitio tiene y el fabricante no declara ninguna (vacío o 0), no se
     // puede comparar: «sin_dato», con aviso, en vez de dar por buena o mala la carga
-    const nieve = !((sitio.nieve || 0) > 0) ? 'apto' : (modelo.nieve > 0 ? comprobar(sitio.nieve, modelo.nieve) : 'sin_dato');
+    // Fuera de la tabla E.2 (por encima de la última altitud con dato de la zona): requiere estudio
+    const nieve = sitio.nieve_fuera ? 'fuera_tabla'
+      : !((sitio.nieve || 0) > 0) ? 'apto' : (modelo.nieve > 0 ? comprobar(sitio.nieve, modelo.nieve) : 'sin_dato');
     const orden = ['apto', 'al_limite', 'no_apto'];
-    const resultado = orden[Math.max(orden.indexOf(viento), orden.indexOf(nieve === 'sin_dato' ? 'apto' : nieve))];
+    const resultado = orden[Math.max(orden.indexOf(viento), orden.indexOf(nieve === 'sin_dato' || nieve === 'fuera_tabla' ? 'apto' : nieve))];
     return { resultado, viento, nieve };
   }
 
@@ -53,6 +55,10 @@
     if (apto && apto.resultado !== 'apto') {
       avisos.push({ nivel: apto.resultado === 'no_apto' ? 'rojo' : 'ambar', codigo: 'emplazamiento',
         texto: apto.resultado === 'no_apto' ? 'El modelo no alcanza las cargas del emplazamiento: requiere cálculo específico' : 'El modelo va al límite de las cargas del emplazamiento' });
+    }
+    if (apto && apto.nieve === 'fuera_tabla') {
+      const f = proyecto.sitio.nieve_fuera;
+      avisos.push({ nivel: 'ambar', codigo: 'nieve_fuera_tabla', texto: `Nieve fuera de la tabla E.2 del CTE (zona ${f.zona}, ${Math.round(f.altitud)} m; la tabla llega a ${f.ultima} m): requiere estudio` });
     }
     if (apto && apto.nieve === 'sin_dato') {
       avisos.push({ nivel: 'ambar', codigo: 'nieve_sin_dato', texto: `El sitio tiene ${Math.round(proyecto.sitio.nieve)} kg/m² de nieve y el modelo no declara carga de nieve: pedir el dato al fabricante` });
