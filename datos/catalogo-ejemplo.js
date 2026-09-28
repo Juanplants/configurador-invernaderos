@@ -19,7 +19,7 @@ window.CATALOGO_EJEMPLO = {
       "familia": "multitunel",
       "anchos_de_nave_admitidos": "8",
       "separaciones_entre_porticos": "4",
-      "alturas_a_canal_admitidas": "4;4.5;5",
+      "alturas_a_canal_admitidas": "4.5;4;5",
       "flecha_del_arco": 1.8,
       "max_naves": 15,
       "max_longitud": 120,

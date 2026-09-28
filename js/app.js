@@ -12,7 +12,9 @@ const state = {
   modelo: CATALOGO.modelos[0].id,
   naves: 3,
   tramos: 11,
-  altura_canal: null,   // null = primera admitida por el modelo
+  // null = primera de la lista del catálogo (el distribuidor ordena la lista
+  // para que su medida habitual vaya delante)
+  altura_canal: null,
   ancho_nave: null,
   separacion: null,
   puertas: 1,
@@ -345,7 +347,11 @@ function bindEvents() {
   const entero = (v, min) => Math.max(min, parseInt(v, 10) || min);
   const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e.target); render(); });
 
-  on('model-select', 'change', el => { state.modelo = el.value; depurarSeleccion(); });
+  on('model-select', 'change', el => {
+    state.modelo = el.value;
+    state.altura_canal = state.ancho_nave = state.separacion = null; // valores por defecto del nuevo modelo
+    depurarSeleccion();
+  });
   on('num-naves', 'input', el => { state.naves = entero(el.value, 1); });
   on('num-tramos', 'input', el => { state.tramos = entero(el.value, 1); });
   on('puertas', 'input', el => { state.puertas = entero(el.value, 0); });
