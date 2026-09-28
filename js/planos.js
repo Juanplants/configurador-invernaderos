@@ -1,7 +1,8 @@
 // ============================================================
 // Generación de vistas del plano (SVG)
 // ============================================================
-// 4 vistas: planta, alzado frontal, alzado lateral, sección transversal.
+// Alzado frontal, alzado lateral y sección transversal (dibujo de la v0.3,
+// pendiente de pasar a hoja A3 como la planta: js/planos/planta.js).
 // Sin layouts interiores ni overlays — vista estructural pura.
 
 const PLANOS = {
@@ -60,52 +61,7 @@ const PLANOS = {
     }
   },
 
-  // ------------------------------------------------------------
-  // 1. PLANTA
-  // ------------------------------------------------------------
-  planta(state, g, modelo) {
-    const { W, H } = this;
-    const PAD_L = 60, PAD_R = 80, PAD_T = 60, PAD_B = 120;
-    const drawW = W - PAD_L - PAD_R;
-    const drawH = H - PAD_T - PAD_B;
-    const scale = Math.min(drawW / g.largo, drawH / g.ancho_total);
-    const planW = g.largo * scale;
-    const planH = g.ancho_total * scale;
-    const x0 = PAD_L + (drawW - planW) / 2;
-    const y0 = PAD_T + (drawH - planH) / 2;
-
-    const parts = this._bordeYCajetin('VISTA EN PLANTA', modelo, g, state, (1/scale) * 100);
-
-    const stripH = planH / g.naves;
-    for (let i = 0; i < g.naves; i++) {
-      parts.push(`<rect x="${x0}" y="${y0 + i*stripH}" width="${planW}" height="${stripH}" fill="${i%2===0 ? '#e8f5e9' : '#dcedc8'}" stroke="#2e7d32" stroke-width="1"/>`);
-      const midY = y0 + i*stripH + stripH/2;
-      parts.push(`<line x1="${x0}" y1="${midY}" x2="${x0+planW}" y2="${midY}" stroke="#2e7d32" stroke-width="0.5" stroke-dasharray="4 3" opacity="0.6"/>`);
-    }
-
-    // Pilares
-    const tramoW = planW / g.tramos;
-    for (let i = 0; i <= g.tramos; i++) {
-      for (let j = 0; j <= g.naves; j++) {
-        parts.push(`<circle cx="${x0 + i*tramoW}" cy="${y0 + j*stripH}" r="2.8" fill="#1b5e20"/>`);
-      }
-    }
-
-    // Acotación
-    this._acotar(parts, x0, y0 + planH + 24, x0 + planW, y0 + planH + 24,
-      `Largo: ${g.largo.toFixed(1)} m (${g.tramos} × ${g.sep_porticos} m)`, 'h');
-    this._acotar(parts, x0 + planW + 24, y0, x0 + planW + 24, y0 + planH,
-      `Ancho: ${g.ancho_total.toFixed(1)} m`, 'v');
-
-    // Flecha del norte
-    parts.push(`<g transform="translate(${W-60}, 75)">
-      <circle r="20" fill="white" stroke="#333"/>
-      <path d="M0,-15 L7,10 L0,4 L-7,10 Z" fill="#333"/>
-      <text y="28" text-anchor="middle" font-size="10">N</text>
-    </g>`);
-
-    return parts.join('');
-  },
+  // (La planta es ya una hoja A3 a escala: js/planos/planta.js)
 
   // ------------------------------------------------------------
   // 2. ALZADO FRONTAL

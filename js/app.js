@@ -395,29 +395,36 @@ function renderMateriales({ r }) {
   `;
 }
 
-function generarPlanos(r) {
+// Planos: la planta ya es una hoja A3 a escala (js/planos/); alzados y
+// sección siguen con el dibujo de la v0.3 hasta rehacerlos igual.
+const PLANOS_VISTAS = { planta: 'planta', 'alzado-frontal': 'alzadoFrontal', 'alzado-lateral': 'alzadoLateral', seccion: 'seccion' };
+
+function plano(r, clave) {
   const g = r.geometria;
   const modelo = getModelo();
-  return {
-    planta:        PLANOS.planta(state, g, modelo),
-    alzadoFrontal: PLANOS.alzadoFrontal(state, g, modelo),
-    alzadoLateral: PLANOS.alzadoLateral(state, g, modelo),
-    seccion:       PLANOS.seccion(state, g, modelo, perfilesUsados(r))
-  };
+  const antiguo = (svg) => ({ svg, viewBox: '0 0 900 520' });
+  switch (clave) {
+    case 'planta':
+      return PLANOS_A3.planta({
+        g, modelo, empresa: CATALOGO.empresa || {},
+        proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
+        fecha: new Date().toLocaleDateString('es-ES')
+      });
+    case 'alzadoFrontal': return antiguo(PLANOS.alzadoFrontal(state, g, modelo));
+    case 'alzadoLateral': return antiguo(PLANOS.alzadoLateral(state, g, modelo));
+    case 'seccion':       return antiguo(PLANOS.seccion(state, g, modelo, perfilesUsados(r)));
+  }
+}
+
+function generarPlanos(r) {
+  return Object.fromEntries(Object.values(PLANOS_VISTAS).map(k => [k, plano(r, k)]));
 }
 
 function renderPlano({ r }) {
-  const g = r.geometria;
-  const modelo = getModelo();
+  const p = plano(r, PLANOS_VISTAS[state.vistaActual]);
   const svg = document.getElementById('plan');
-  let contenido = '';
-  switch (state.vistaActual) {
-    case 'planta':         contenido = PLANOS.planta(state, g, modelo); break;
-    case 'alzado-frontal': contenido = PLANOS.alzadoFrontal(state, g, modelo); break;
-    case 'alzado-lateral': contenido = PLANOS.alzadoLateral(state, g, modelo); break;
-    case 'seccion':        contenido = PLANOS.seccion(state, g, modelo, perfilesUsados(r)); break;
-  }
-  svg.innerHTML = contenido;
+  svg.setAttribute('viewBox', p.viewBox);
+  svg.innerHTML = p.svg;
 
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.vista === state.vistaActual);
