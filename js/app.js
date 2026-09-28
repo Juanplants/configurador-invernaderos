@@ -27,11 +27,18 @@ const state = {
   zona: (CATALOGO.obra_local || [])[0]?.zona || '',
   viento_kmh: '',
   parcela: { largo: '', ancho: '', orientacion: 0, girado: false },
+  // Fase 6: parcela del Catastro { anillos, meta, implantacion } o null; retranqueos (m) y perfil del optimizador
+  terreno: null,
+  retranqueo: 3,
+  camino: 4,
+  perfil: 'equilibrado',
+  orientacion_preferida: 'norte_sur',   // cumbrera: 'norte_sur' | 'este_oeste' | 'indiferente'
   cliente: '',
   ubicacion: '',
   codigoProyecto: '',
   vistaActual: 'planta',
-  verCalculo: false
+  verCalculo: false,
+  optimizacion: null    // última búsqueda del optimizador (no se guarda)
 };
 
 // ------- Catálogo: cargar, validar, guardar en la sesión -------
@@ -43,6 +50,7 @@ function aplicarCatalogo(catalogo, origen) {
   state.seleccion = {};
   state.opcionales.clear();
   state.zona = (catalogo.obra_local || [])[0]?.zona || '';
+  state.optimizacion = null; // las candidatas eran de otro catálogo
   // Las listas de modelos y zonas se rellenan de nuevo en el siguiente render
   document.getElementById('model-select').innerHTML = '';
   document.getElementById('zona').innerHTML = '';
@@ -125,6 +133,9 @@ function aplicarEstadoProyecto(e) {
   const poner = (id, v) => { document.getElementById(id).value = v ?? ''; };
   poner('cliente', state.cliente); poner('ubicacion', state.ubicacion); poner('codigo-proyecto', state.codigoProyecto);
   poner('viento', state.viento_kmh);
+  poner('retranqueo', state.retranqueo); poner('camino', state.camino);
+  if (!OPTIMIZADOR.ORIENTACIONES[state.orientacion_preferida]) state.orientacion_preferida = OPTIMIZADOR.ORIENTACION_PREFERIDA;
+  state.optimizacion = null;
   poner('parcela-largo', state.parcela.largo); poner('parcela-ancho', state.parcela.ancho); poner('parcela-orientacion', state.parcela.orientacion);
   document.getElementById('parcela-girado').checked = !!state.parcela.girado;
   if (!PLANOS_VISTAS[state.vistaActual]) state.vistaActual = 'planta';
@@ -288,6 +299,19 @@ function renderConfigPanel({ modelo }) {
   }
   zonaSelect.value = state.zona;
 
+  const perfilSelect = document.getElementById('perfil');
+  if (perfilSelect.options.length === 0) {
+    perfilSelect.innerHTML = Object.entries(OPTIMIZADOR.PERFILES).map(([k, p]) => `<option value="${k}">${esc(p.nombre)}</option>`).join('');
+  }
+  perfilSelect.value = OPTIMIZADOR.PERFILES[state.perfil] ? state.perfil : 'equilibrado';
+  const orientSelect = document.getElementById('orientacion-preferida');
+  if (orientSelect.options.length === 0) {
+    orientSelect.innerHTML = Object.entries(OPTIMIZADOR.ORIENTACIONES).map(([k, o]) => `<option value="${k}">${esc(o.nombre)}</option>`).join('');
+  }
+  orientSelect.value = state.orientacion_preferida;
+  mostrarParcela();
+  renderOptimizador();
+
   renderEnvolvente(modelo);
 }
 
@@ -348,12 +372,18 @@ function renderEnvolvente(modelo) {
 
 // Aviso si el invernadero no cabe en la parcela introducida
 function avisoParcela(r) {
+  if (state.terreno) {
+    const g = r.geometria, imp = implantacionActual(g), h = holguraProyecto();
+    if (!imp) return `<div class="aviso rojo">El invernadero (${fmtNum(g.largo, 2)} × ${fmtNum(g.ancho_total, 2)} m) no cabe en la parcela del Catastro dejando ${fmtNum(h, 2)} m a los linderos. Prueba con «Buscar las 3 mejores implantaciones».</div>`;
+    const d = PARCELA.holguraRect(state.terreno.anillos, imp).distancia;
+    return d < h - 1e-6 ? `<div class="aviso rojo">El invernadero queda a ${d < 0 ? 'fuera de la parcela' : fmtNum(d, 2) + ' m del lindero'}; se exigen ${fmtNum(h, 2)} m.</div>` : '';
+  }
   const parcela = parcelaDelProyecto();
   if (!parcela) return '';
   const e = PLANOS_A3.encaje(r.geometria, parcela);
   if (e.cabe) return '';
   const falta = [e.faltaLargo > 0 ? `${fmtNum(e.faltaLargo, 2)} m a lo largo` : '', e.faltaAncho > 0 ? `${fmtNum(e.faltaAncho, 2)} m a lo ancho` : ''].filter(Boolean).join(' y ');
-  return `<div class="aviso rojo">El invernadero no cabe en la parcela: faltan ${falta}${parcela.girado ? '' : ' (prueba a girarlo 90°)'}.</div>`;
+  return `<div class="aviso rojo">El invernadero no cabe en la parcela${parcela.holgura ? ` dejando ${fmtNum(parcela.holgura, 2)} m a los linderos` : ''}: faltan ${falta}${parcela.girado ? '' : ' (prueba a girarlo 90°)'}.</div>`;
 }
 
 function renderSummary({ modelo, r }) {
@@ -468,7 +498,33 @@ function parcelaDelProyecto() {
   const p = state.parcela;
   const largo = parseFloat(p.largo), ancho = parseFloat(p.ancho);
   if (!(largo > 0) || !(ancho > 0)) return null;
-  return { largo, ancho, orientacion: parseFloat(p.orientacion) || 0, girado: !!p.girado };
+  return { largo, ancho, orientacion: parseFloat(p.orientacion) || 0, girado: !!p.girado, holgura: holguraProyecto() };
+}
+
+// Distancia mínima a los linderos: la mayor del retranqueo y el camino perimetral
+// (el camino puede ir dentro del retranqueo)
+function holguraProyecto() {
+  return Math.max(parseFloat(state.retranqueo) || 0, parseFloat(state.camino) || 0);
+}
+
+// Dónde va el invernadero en la parcela del Catastro: la implantación guardada si
+// es de estas medidas y cumple la distancia; si no, se vuelve a encajar (la mejor
+// orientación en la que cabe). null si no cabe.
+let cacheEncaje = { clave: '', imp: null };
+function implantacionActual(g) {
+  const t = state.terreno;
+  if (!t) return null;
+  const h = holguraProyecto();
+  const imp = t.implantacion;
+  const mismas = imp && Math.abs(imp.largo - g.largo) < 1e-6 && Math.abs(imp.ancho - g.ancho_total) < 1e-6;
+  if (mismas && PARCELA.holguraRect(t.anillos, imp).distancia >= h - 1e-6) return imp;
+  const clave = `${g.largo}|${g.ancho_total}|${h}|${state.orientacion_preferida}|${JSON.stringify(t.anillos[0][0])}`;
+  if (cacheEncaje.clave !== clave) {
+    const nueva = OPTIMIZADOR.encajar(t.anillos, g.largo, g.ancho_total, h, state.orientacion_preferida);
+    cacheEncaje = { clave, imp: nueva && { cx: nueva.cx, cy: nueva.cy, azimut: nueva.azimut, largo: g.largo, ancho: g.ancho_total } };
+  }
+  if (cacheEncaje.imp) t.implantacion = cacheEncaje.imp;
+  return cacheEncaje.imp || (mismas ? imp : null);
 }
 
 function ventanasDelProyecto(r) {
@@ -487,15 +543,18 @@ function ventanasDelProyecto(r) {
 
 // Devuelve la hoja, o null si es el emplazamiento y no hay parcela
 function plano(r, clave) {
-  const parcela = parcelaDelProyecto();
-  if (clave === 'emplazamiento' && !parcela) return null;
+  const t = state.terreno;
+  const parcela = t ? null : parcelaDelProyecto();
+  const imp = t ? implantacionActual(r.geometria) : null;
+  if (clave === 'emplazamiento' && !parcela && !t) return null;
   return PLANOS_A3[clave](Object.assign({
     g: r.geometria, modelo: getModelo(), empresa: CATALOGO.empresa || {},
     proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
     fecha: new Date().toLocaleDateString('es-ES'),
     parcela,
+    terreno: t ? { anillos: t.anillos, meta: t.meta, implantacion: imp, retranqueo: parseFloat(state.retranqueo) || 0, camino: parseFloat(state.camino) || 0 } : undefined,
     // Con parcela se conoce el norte: la planta lo dibuja
-    orientacion: parcela ? PLANOS_A3.encaje(r.geometria, parcela).azimutInvernadero : undefined
+    orientacion: imp ? imp.azimut : parcela ? PLANOS_A3.encaje(r.geometria, parcela).azimutInvernadero : undefined
   }, ventanasDelProyecto(r)));
 }
 
@@ -506,7 +565,7 @@ function generarPlanos(r) {
 
 const HOJA_SIN_PARCELA = {
   viewBox: '0 0 420 297',
-  svg: '<rect width="420" height="297" fill="#fafafa"/><text x="210" y="148" text-anchor="middle" font-size="7" fill="#666" font-family="sans-serif">Introduce el largo y el ancho de la parcela en «Emplazamiento»</text>'
+  svg: '<rect width="420" height="297" fill="#fafafa"/><text x="210" y="148" text-anchor="middle" font-size="7" fill="#666" font-family="sans-serif">Carga la parcela del Catastro o introduce su largo y ancho en «Emplazamiento»</text>'
 };
 
 function renderPlano({ r }) {
@@ -538,7 +597,7 @@ async function descargarPlanos(soloEsta) {
   if (error) return;
   const planos = generarPlanos(r);
   const clave = PLANOS_VISTAS[state.vistaActual];
-  if (soloEsta && !planos[clave]) { estado.textContent = 'Esta hoja necesita las medidas de la parcela.'; return; }
+  if (soloEsta && !planos[clave]) { estado.textContent = 'Esta hoja necesita la parcela (del Catastro o sus medidas).'; return; }
   const claves = soloEsta ? [clave] : Object.keys(planos);
   const nombre = EXPORTAR.nombreArchivo(state.codigoProyecto, soloEsta ? PLANOS_ARCHIVO[clave] : 'planos');
   estado.textContent = 'Generando PDF…';
@@ -565,6 +624,146 @@ function cerrarPropuesta() {
   document.body.classList.remove('modo-propuesta');
 }
 
+// ------- Terreno: parcela del Catastro y optimizador (fase 6) -------
+function cargarArchivoParcela(archivo) {
+  const lector = new FileReader();
+  lector.onload = () => {
+    const r = PARCELA.leer(String(lector.result), archivo.name);
+    if (r.errores.length) {
+      errorParcela = { errores: r.errores, archivo: archivo.name };
+      mostrarParcela();
+      return;
+    }
+    errorParcela = null;
+    state.terreno = { anillos: r.anillos, meta: r.meta, implantacion: null, avisos: r.avisos };
+    state.optimizacion = null;
+    state.vistaActual = 'emplazamiento';
+    render();
+  };
+  lector.onerror = () => { errorParcela = { errores: ['No se pudo leer el archivo.'], archivo: archivo.name }; mostrarParcela(); };
+  lector.readAsText(archivo);
+}
+
+// Datos de la parcela cargada (o los errores del último archivo, si no valía)
+let errorParcela = null;
+function mostrarParcela() {
+  const fallo = errorParcela;
+  const caja = document.getElementById('parcela-info');
+  const t = state.terreno;
+  document.querySelectorAll('.parcela-manual').forEach(el => { el.hidden = !!t; });
+  if (fallo && !t) {
+    caja.innerHTML = `<div class="aviso rojo"><strong>${esc(fallo.archivo)}</strong>: ${fallo.errores.map(esc).join(' ')}</div>`;
+    return;
+  }
+  if (!t) { caja.innerHTML = ''; return; }
+  const m = t.meta || {};
+  caja.innerHTML = `<div class="parcela-cargada">
+      <div><strong>${esc(m.refcat ? 'Ref. catastral ' + m.refcat : m.archivo || 'Parcela')}</strong></div>
+      <div>${fmtNum(m.area, 0)} m²${m.area_declarada ? ` (declarada ${fmtNum(m.area_declarada, 0)} m²)` : ''} · ${m.vertices} vértices${m.huecos ? ` · ${m.huecos} hueco${m.huecos > 1 ? 's' : ''}` : ''} · ${esc(m.formato || '')} ${esc(m.srs || '')}</div>
+      <div class="hint">${esc(m.archivo || '')}</div>
+      ${(t.avisos || []).map(a => `<div class="aviso ambar">${esc(a)}</div>`).join('')}
+      <button id="btn-quitar-parcela" class="btn-secundario">Quitar parcela del Catastro</button>
+    </div>`;
+}
+
+// Anillos de la parcela para el optimizador: la del Catastro o el rectángulo a mano
+function anillosParcela() {
+  if (state.terreno) return state.terreno.anillos;
+  const p = parcelaDelProyecto();
+  return p ? PARCELA.rectangulo(p.largo, p.ancho, p.orientacion) : null;
+}
+
+function optimizar() {
+  const caja = document.getElementById('optimizador');
+  const anillos = anillosParcela();
+  caja.hidden = false;
+  if (!anillos) {
+    state.optimizacion = null;
+    caja.innerHTML = '<div class="aviso ambar">Carga la parcela del Catastro o introduce su largo y ancho para buscar implantaciones.</div>';
+    return;
+  }
+  caja.innerHTML = '<p class="hint">Buscando la mejor implantación (orientaciones cada 5°, todos los modelos, anchos y separaciones)…</p>';
+  // Deja pintar el mensaje antes del cálculo (≈ 1 s)
+  setTimeout(() => {
+    // Con el rectángulo a mano, el invernadero va paralelo a la parcela o girado 90°
+    const p = state.terreno ? null : parcelaDelProyecto();
+    const res = OPTIMIZADOR.buscar({
+      anillos, catalogo: CATALOGO, holgura: holguraProyecto(), perfil: state.perfil, orientacion: state.orientacion_preferida,
+      azimuts: p ? [p.orientacion, p.orientacion + 90] : undefined,
+      base: { seleccion: state.seleccion, opcionales: [...state.opcionales], puertas: state.puertas, zona: state.zona || undefined,
+        sitio: state.viento_kmh !== '' ? { viento_kmh: +state.viento_kmh } : undefined }
+    });
+    state.optimizacion = { res, anillos, elegida: null };
+    renderOptimizador();
+  }, 30);
+}
+
+function renderOptimizador() {
+  const caja = document.getElementById('optimizador');
+  const o = state.optimizacion;
+  if (!o) { caja.hidden = true; caja.innerHTML = ''; return; }
+  caja.hidden = false;
+  const { res } = o;
+  const avisos = res.avisos.map(a => `<div class="aviso ambar">${esc(a)}</div>`).join('');
+  if (!res.mejores.length) {
+    caja.innerHTML = `<h3>Implantaciones</h3>${avisos || '<div class="aviso rojo">No cabe ningún invernadero.</div>'}`;
+    return;
+  }
+  const orient = (az) => `${az}° ${az === 0 ? '(cumbrera norte-sur)' : az === 90 ? '(cumbrera este-oeste)' : ''}`;
+  const G = OPTIMIZADOR.GRUPO_VENTANA;
+  // Marcada mientras la pantalla siga con sus medidas y su ventana
+  const esLaActual = (c) => c.modelo.id === state.modelo && c.naves === state.naves && c.tramos === state.tramos
+    && (!c.ventana || state.seleccion[G] === c.ventana.id);
+  const tarjetas = res.mejores.map((c, i) => `
+    <div class="candidata${o.elegida === i && esLaActual(c) ? ' elegida' : ''}${c.enRojo ? ' en-rojo' : ''}" data-candidata="${i}">
+      <div class="candidata-cabecera"><span class="puesto">${i + 1}</span> ${esc(c.modelo.nombre)}</div>
+      ${c.enRojo ? `<div class="aviso rojo">${esc(c.aviso)}</div>` : ''}
+      ${CROQUIS.svg(o.anillos, c)}
+      <table>
+        <tr><td>Ventana cenital</td><td>${esc(c.ventana ? c.ventana.nombre : 'Sin ventana')}</td></tr>
+        <tr><td>Naves × tramos</td><td>${c.naves} × ${c.tramos}</td></tr>
+        <tr><td>Medidas</td><td>${fmtNum(c.ancho, 2)} × ${fmtNum(c.largo, 2)} m</td></tr>
+        <tr><td>Superficie</td><td><strong>${fmtNum(c.area, 0)} m²</strong></td></tr>
+        <tr><td>Precio</td><td><strong>${fmtNum(c.eur_m2, 2)} €/m²</strong></td></tr>
+        <tr><td>Ventilación</td><td>${fmtNum(c.ventilacion * 100)} % <small>cenital ${fmtNum(c.ventilacion_cenital * 100)} %</small></td></tr>
+        <tr><td>Orientación</td><td>${orient(c.azimut)}</td></tr>
+        <tr><td>Puntuación</td><td>${fmtNum(c.puntuacion * 100, 0)} / 100</td></tr>
+      </table>
+      <button class="btn-primary btn-elegir" data-elegir="${i}">${o.elegida === i && esLaActual(c) ? '✓ Elegida' : 'Elegir'}</button>
+    </div>`).join('');
+  const p = res.pesos;
+  const pref = OPTIMIZADOR.ORIENTACIONES[res.orientacion];
+  caja.innerHTML = `<h3>Las 3 mejores implantaciones <small>· ${esc(res.perfil)}: coste ${p.coste * 100} %, superficie ${p.superficie * 100} %, ventilación ${p.ventilacion * 100} %, orientación ${p.orientacion * 100} % (${esc(pref ? pref.nombre.toLowerCase() : '')}) · ${res.candidatas} combinaciones</small></h3>
+    ${avisos}
+    <div class="candidatas">${tarjetas}</div>
+    <p class="hint">A ${fmtNum(holguraProyecto(), 2)} m de los linderos como mínimo. Cada opción se calcula con cada ventana cenital del catálogo y se muestra la mejor de cada modelo + ventana. Precios del catálogo cargado; al elegir una, se rellenan modelo, ventana, naves, tramos, ancho y separación y se generan los planos.</p>`;
+}
+
+function elegirCandidata(i) {
+  const o = state.optimizacion;
+  const c = o && o.res.mejores[i];
+  if (!c) return;
+  state.modelo = c.modelo.id;
+  state.naves = c.naves;
+  state.tramos = c.tramos;
+  state.ancho_nave = c.ancho_nave;
+  state.separacion = c.separacion;
+  if (c.ventana) state.seleccion[OPTIMIZADOR.GRUPO_VENTANA] = c.ventana.id;
+  depurarSeleccion();
+  const imp = c.implantacion;
+  if (state.terreno) {
+    state.terreno.implantacion = { cx: imp.cx, cy: imp.cy, azimut: imp.azimut, largo: c.largo, ancho: c.ancho };
+  } else {
+    // Parcela rectangular a mano: el invernadero va centrado; girado si su largo va a lo ancho de la parcela
+    const dif = ((imp.azimut - (parseFloat(state.parcela.orientacion) || 0)) % 180 + 180) % 180;
+    state.parcela.girado = dif > 45 && dif < 135;
+    document.getElementById('parcela-girado').checked = state.parcela.girado;
+  }
+  o.elegida = i;
+  state.vistaActual = 'emplazamiento';
+  render();
+}
+
 // ------- Eventos -------
 function bindEvents() {
   const entero = (v, min) => Math.max(min, parseInt(v, 10) || min);
@@ -587,6 +786,34 @@ function bindEvents() {
   on('parcela-ancho', 'input', el => { state.parcela.ancho = el.value; });
   on('parcela-orientacion', 'input', el => { state.parcela.orientacion = el.value; });
   on('parcela-girado', 'change', el => { state.parcela.girado = el.checked; });
+  on('retranqueo', 'input', el => { state.retranqueo = Math.max(0, parseFloat(el.value) || 0); state.optimizacion = null; });
+  on('camino', 'input', el => { state.camino = Math.max(0, parseFloat(el.value) || 0); state.optimizacion = null; });
+  document.getElementById('perfil').addEventListener('change', e => {
+    state.perfil = e.target.value;
+    if (state.optimizacion) optimizar(); // mismas candidatas, otra puntuación
+  });
+  document.getElementById('orientacion-preferida').addEventListener('change', e => {
+    state.orientacion_preferida = e.target.value;
+    if (state.optimizacion) optimizar(); else render();
+  });
+  document.getElementById('btn-optimizar').addEventListener('click', optimizar);
+  document.getElementById('btn-cargar-parcela').addEventListener('click', () => document.getElementById('archivo-parcela').click());
+  document.getElementById('archivo-parcela').addEventListener('change', e => {
+    const archivo = e.target.files[0];
+    e.target.value = '';
+    if (archivo) cargarArchivoParcela(archivo);
+  });
+  document.getElementById('parcela-info').addEventListener('click', e => {
+    if (e.target.id !== 'btn-quitar-parcela') return;
+    state.terreno = null;
+    state.optimizacion = null;
+    errorParcela = null;
+    render();
+  });
+  document.getElementById('optimizador').addEventListener('click', e => {
+    const b = e.target.closest('[data-elegir]');
+    if (b) elegirCandidata(+b.dataset.elegir);
+  });
   document.getElementById('btn-guardar-proyecto').addEventListener('click', guardarProyecto);
   document.getElementById('btn-abrir-proyecto').addEventListener('click', () => document.getElementById('archivo-proyecto').click());
   document.getElementById('archivo-proyecto').addEventListener('change', e => {

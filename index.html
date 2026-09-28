@@ -71,8 +71,11 @@
         <label>Viento de dise&ntilde;o del sitio (km/h)</label>
         <input type="number" id="viento" min="0" placeholder="Opcional: compara con el declarado">
       </div>
-      <p class="hint">Parcela (opcional, rectangular): activa el plano de emplazamiento.</p>
-      <div class="field-row">
+      <p class="hint">Parcela (opcional): la del Catastro o un rect&aacute;ngulo a mano. Activa el plano de emplazamiento.</p>
+      <button id="btn-cargar-parcela" class="btn-secundario">&#128506; Cargar parcela del Catastro (GML o KML)</button>
+      <input type="file" id="archivo-parcela" accept=".gml,.kml,.xml" hidden>
+      <div id="parcela-info"></div>
+      <div class="field-row parcela-manual">
         <div class="field">
           <label>Largo de la parcela (m)</label>
           <input type="number" id="parcela-largo" min="0" step="0.1" placeholder="—">
@@ -82,7 +85,7 @@
           <input type="number" id="parcela-ancho" min="0" step="0.1" placeholder="—">
         </div>
       </div>
-      <div class="field-row">
+      <div class="field-row parcela-manual">
         <div class="field">
           <label>Lado largo respecto al norte (&deg;)</label>
           <input type="number" id="parcela-orientacion" min="0" max="360" step="1" value="0">
@@ -92,6 +95,28 @@
           <label class="opt"><input type="checkbox" id="parcela-girado"><span>Invernadero girado 90&deg;</span></label>
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Retranqueo a linderos (m)</label>
+          <input type="number" id="retranqueo" min="0" step="0.5" value="3">
+        </div>
+        <div class="field">
+          <label>Camino perimetral (m)</label>
+          <input type="number" id="camino" min="0" step="0.5" value="4">
+        </div>
+      </div>
+      <p class="hint">Distancia m&iacute;nima del invernadero al lindero: la mayor de las dos (el camino puede ir dentro del retranqueo). Rev&iacute;sala con la normativa municipal.</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Prioridad del optimizador</label>
+          <select id="perfil"></select>
+        </div>
+        <div class="field">
+          <label>Orientaci&oacute;n preferida</label>
+          <select id="orientacion-preferida"></select>
+        </div>
+      </div>
+      <button id="btn-optimizar" class="btn-secundario">&#128269; Buscar las 3 mejores implantaciones</button>
 
       <h2>Proyecto</h2>
       <div class="field">
@@ -136,6 +161,9 @@
           <span class="hint" id="pdf-estado">Imprimir en A3 al 100 % (tama&ntilde;o real) para que la escala sea exacta.</span>
         </div>
       </div>
+
+      <!-- Optimizador: las 3 mejores implantaciones -->
+      <div class="optimizador-box" id="optimizador" hidden></div>
 
       <!-- Resumen, avisos y precio -->
       <div class="summary-box" id="summary"></div>
@@ -182,6 +210,9 @@
   <script src="js/planos/planta.js"></script>
   <script src="js/planos/transversal.js"></script>
   <script src="js/planos/lateral.js"></script>
+  <script src="js/terreno/parcela.js"></script>
+  <script src="js/terreno/optimizador.js"></script>
+  <script src="js/terreno/croquis.js"></script>
   <script src="js/planos/emplazamiento.js"></script>
   <script src="js/exportar.js"></script>
   <script src="js/proyecto.js"></script>

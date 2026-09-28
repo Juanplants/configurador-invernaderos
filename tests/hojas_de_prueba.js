@@ -3,6 +3,8 @@
 // en las cinco hojas (con una puerta de 3 × 3 m). Sección con techo cerrado,
 // una hoja y mariposa; alzado lateral con y sin ventana lateral. Además, casos
 // que fuerzan la interrupción (15 naves) y puertas en los dos hastiales.
+// Emplazamiento también sobre parcelas reales (polígono): la de ejemplo del
+// Catastro (inventada, tests/datos/parcela_irregular.gml) y una con un hueco.
 
 const HOJA = require('../js/planos/hoja.js');
 const PLANTA = require('../js/planos/planta.js');
@@ -10,7 +12,11 @@ const TRANSVERSAL = require('../js/planos/transversal.js');
 const LATERAL = require('../js/planos/lateral.js');
 const EMPLAZAMIENTO = require('../js/planos/emplazamiento.js');
 const GEO = require('../js/motor/geometria.js');
+const PARCELA = require('../js/terreno/parcela.js');
+const OPTIMIZADOR = require('../js/terreno/optimizador.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
+const fs = require('fs');
+const path = require('path');
 
 // Textos largos a propósito para forzar recortes en el cajetín
 const PROYECTO = { cliente: 'Explotación Agrícola Hermanos Martínez Fernández', codigo: '26JD001', ubicacion: 'Paraje Los Llanos, El Ejido (Almería)' };
@@ -60,7 +66,37 @@ function casos() {
     lista.push(Object.assign({ nombre: n('pegado al lindero'), parcela: { largo: g.largo, ancho: g.ancho_total + 20, orientacion: 0 } }, b));
     lista.push(Object.assign({ nombre: n('no cabe'), parcela: { largo: g.largo - 12, ancho: g.ancho_total + 6, orientacion: 120 } }, b));
   }
+  // Emplazamiento sobre polígono: invernadero colocado por el optimizador (encajar)
+  const ejemplo = PARCELA.leer(fs.readFileSync(path.join(__dirname, 'datos', 'parcela_irregular.gml'), 'utf8'), 'parcela_irregular.gml');
+  const conHueco = parcelaConHueco();
+  const poligono = (nombre, modelo, naves, tramos, parcela, { retranqueo = 3, camino = 4, mover = null, orientacion = 'norte_sur', azimut = null } = {}) => {
+    const g = GEO.calcular(modelo, { naves, tramos });
+    let implantacion = OPTIMIZADOR.encajar(parcela.anillos, g.largo, g.ancho_total, Math.max(retranqueo, camino), orientacion);
+    if (mover) implantacion = OPTIMIZADOR.encajar(parcela.anillos, g.largo, g.ancho_total, 0);
+    if (azimut !== null) implantacion = { cx: 0, cy: 0, azimut, largo: g.largo, ancho: g.ancho_total };
+    const terreno = { anillos: parcela.anillos, meta: parcela.meta, implantacion, retranqueo: mover ? mover : retranqueo, camino };
+    lista.push({ vista: 'emplazamiento', nombre: `emplazamiento ${modelo.id} ${naves} naves × ${tramos} tramos, ${nombre}`, modelo, naves, tramos, g, terreno });
+  };
+  for (const modelo of catalogo.modelos) {
+    poligono('parcela del Catastro', modelo, 5, 20, ejemplo);
+    poligono('parcela del Catastro, sin camino', modelo, 2, 10, ejemplo, { camino: 0 });
+    poligono('parcela con hueco', modelo, 4, 15, conHueco);
+    poligono('parcela del Catastro, no cabe', modelo, 20, 60, ejemplo);
+    poligono('parcela del Catastro, cumbrera este-oeste', modelo, 6, 15, ejemplo, { orientacion: 'este_oeste' });
+    poligono('parcela del Catastro, invernadero a 35°', modelo, 5, 12, ejemplo, { azimut: 35 });
+    poligono('parcela con hueco, invernadero a 125°', modelo, 3, 10, conHueco, { azimut: 125, camino: 0 });
+  }
+  const m96 = catalogo.modelos.find(m => m.id === 'MT-GOT-96');
+  poligono('parcela del Catastro, grande', m96, 10, 30, ejemplo);
+  poligono('parcela del Catastro, no cumple el retranqueo', m96, 10, 30, ejemplo, { mover: 60 });
   return lista;
+}
+
+// Parcela inventada con un hueco (p. ej. una balsa ajena): 260 × 180 m girada 25°
+function parcelaConHueco() {
+  const [ext] = PARCELA.rectangulo(260, 180, 25);
+  const hueco = PARCELA.esquinas({ cx: 70, cy: 20, azimut: 25, largo: 40, ancho: 30 }).reverse();
+  return { anillos: [ext, hueco], meta: { formato: 'prueba', archivo: 'parcela_con_hueco (inventada)' } };
 }
 
 // Puerta del catálogo de ejemplo (3 × 3 m), una por proyecto como en la app por defecto
@@ -71,9 +107,9 @@ function datos(caso) {
   return {
     g: caso.g, modelo: caso.modelo, empresa: catalogo.empresa, proyecto: PROYECTO, fecha: '28/09/2026',
     ventana: caso.ventana, lateral: caso.lateral, puertas: caso.puertas === undefined ? PUERTAS(1) : caso.puertas,
-    parcela: caso.parcela
+    parcela: caso.parcela, terreno: caso.terreno
   };
 }
 const generar = (caso) => FUNCION[caso.vista](datos(caso));
 
-module.exports = { casos, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, EMPLAZAMIENTO, GEO, catalogo };
+module.exports = { casos, parcelaConHueco, PARCELA, OPTIMIZADOR, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, EMPLAZAMIENTO, GEO, catalogo };

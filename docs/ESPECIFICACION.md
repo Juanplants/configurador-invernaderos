@@ -84,9 +84,9 @@ Nivel A (balances simples: renovaciones/hora, potencia de calefacción, efecto d
 | 1. Catálogo | **Hecho** (`js/importador.js`, `lib/`, `tests/importacion.js`): «Cargar catálogo» lee la plantilla sin internet, la valida (hoja, fila, columna) y la guarda en la sesión | Importa la plantilla y detecta errores provocados |
 | 2. Motor | **Hecho** (`js/motor/`, `tests/`) | Coincide con la referencia independiente y con 63 pilares / 42 cerchas de la v0.3 |
 | 3. Calibración | Espera listas de materiales de fábrica | Acero total ≤ 5 % de desviación frente al fabricante |
-| 4. Planos | En curso: hojas A3 de **planta, alzados, sección y emplazamiento** con puertas, y **PDF A3** a escala real (`js/planos/`, `js/exportar.js`; `tests/planos.js`: cero solapes y ≥ 50 % de ocupación en 208 hojas); detalles y cimentación esperan datos del fabricante | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
-| 5. Interfaz y salidas | En curso: interfaz conectada al motor y al catálogo importado; emplazamiento con parcela rectangular; salidas hechas (planos en PDF, proyecto .json, Excel con hoja de petición de oferta, propuesta con planos A3; `tests/salidas.js`); falta el flujo de 6 pasos | Proyecto completo sin tocar código |
-| 6. Terreno | Pendiente | 3 opciones coherentes con una parcela real |
+| 4. Planos | En curso: hojas A3 de **planta, alzados, sección y emplazamiento** con puertas, y **PDF A3** a escala real (`js/planos/`, `js/exportar.js`; `tests/planos.js`: cero solapes y ≥ 50 % de ocupación en 218 hojas); detalles y cimentación esperan datos del fabricante | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
+| 5. Interfaz y salidas | En curso: interfaz conectada al motor y al catálogo importado; emplazamiento con parcela rectangular o del Catastro; salidas hechas (planos en PDF, proyecto .json, Excel con hoja de petición de oferta, propuesta con planos A3; `tests/salidas.js`); falta el flujo de 6 pasos | Proyecto completo sin tocar código |
+| 6. Terreno | **Hecho** (`js/terreno/`, `tests/terreno.js`, `tests/terreno_navegador.js`): parcela GML/KML del Catastro sin conexión, retranqueo y camino perimetral, optimizador con perfiles, 3 mejores con croquis y emplazamiento con el polígono real; probado con una parcela irregular inventada | 3 opciones coherentes con una parcela real |
 
 ## 10. Decisiones abiertas / datos a pedir a fabricantes
 

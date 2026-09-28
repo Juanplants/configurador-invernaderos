@@ -55,11 +55,18 @@
   // (Liberation/Arial: 0,905 + 0,212 em; medido en Chromium, ver tests/planos_navegador.js)
   const ASC = 0.97, DESC = 0.26;
 
-  // Caja de un texto; ancla 'start' | 'middle' | 'end'; rot = 0 o -90 (se lee de abajo arriba)
+  // Caja de un texto; ancla 'start' | 'middle' | 'end'; rot en grados (-90: se lee de abajo arriba)
   function cajaTexto(x, y, texto, tam, ancla = 'middle', rot = 0) {
     const w = anchoTexto(texto, tam);
     const d = ancla === 'start' ? 0 : ancla === 'end' ? w : w / 2;
     if (rot === -90) return { x: x - ASC * tam, y: y - w + d, w: (ASC + DESC) * tam, h: w };
+    if (rot) {
+      // Otro ángulo (cotas alineadas con un lado oblicuo): caja que envuelve el texto girado
+      const c = Math.cos(rot * Math.PI / 180), s = Math.sin(rot * Math.PI / 180);
+      const pts = [[-d, -ASC * tam], [w - d, -ASC * tam], [w - d, DESC * tam], [-d, DESC * tam]].map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+      const xs = pts.map(q => q[0]), ys = pts.map(q => q[1]);
+      return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+    }
     return { x: x - d, y: y - ASC * tam, w, h: (ASC + DESC) * tam };
   }
 

@@ -152,6 +152,7 @@ function lateral(h, caso, errores) {
 
 // ---------- Emplazamiento ----------
 function emplazamiento(h, caso, errores) {
+  if (caso.terreno) return emplazamientoPoligono(h, caso, errores);
   const { g, parcela } = caso;
   const E = h.escala, mayor = mayorQue(E), e = h.encaje;
   if (mayor && !noVale(HOJAS.EMPLAZAMIENTO.dibujarEmplazamiento(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
@@ -181,6 +182,59 @@ function emplazamiento(h, caso, errores) {
   const azX = parcela.largo >= parcela.ancho ? parcela.orientacion : parcela.orientacion - 90;
   const norte = ((90 - azX) % 360 + 360) % 360;
   if (!h.svg.includes(`rotate(${norte})`)) errores.push(`el norte no está a ${norte}°`);
+}
+
+// Parcela real (polígono): norte arriba (o la hoja entera girada 90° si así cabe
+// a una escala mayor), invernadero con su orientación real, cumple o no según la
+// distancia mínima exacta a los linderos (y huecos)
+const anguloPapel = ([a, b]) => ((Math.atan2(b[0] - a[0], -(b[1] - a[1])) * 180 / Math.PI) % 180 + 180) % 180; // desde arriba, horario
+const mismoAngulo = (a, b) => { const d = Math.abs(a - b) % 180; return Math.min(d, 180 - d) < 1e-6; };
+function emplazamientoPoligono(h, caso, errores) {
+  const { g, terreno } = caso;
+  const E = h.escala, mayor = mayorQue(E), e = h.encaje, d = h.dibujo;
+  if (mayor && !noVale(HOJAS.EMPLAZAMIENTO.dibujarPoligono(HOJAS.datos(caso), mayor, h.giroHoja))) errores.push(`cabría a 1:${mayor}`);
+  if (h.giroHoja) {
+    // Solo se gira la hoja si con el norte arriba no cabe a esta escala
+    if (!noVale(HOJAS.EMPLAZAMIENTO.dibujarPoligono(HOJAS.datos(caso), E, 0))) errores.push('hoja girada sin necesidad');
+  }
+  if (!h.svg.includes(`rotate(${h.giroHoja})`)) errores.push(`el norte no está a ${h.giroHoja}°`);
+  // La parcela conserva su orientación: el norte del terreno va hacia donde apunta la flecha
+  const o = d.transformar([0, 0]), nn = d.transformar([0, 100]);
+  if (!mismoAngulo(anguloPapel([o, nn]), h.giroHoja) || (h.giroHoja === 0 && !(nn[1] < o[1]))) errores.push('la parcela no tiene el norte donde la flecha');
+  const imp = terreno.implantacion;
+  const holgura = Math.max(terreno.retranqueo, terreno.camino);
+  const aviso = (t) => h.svg.includes(`>${t}<`);
+  if (!imp) {
+    if (e.cabe || e.colocado) errores.push('dice que cabe sin implantación');
+    if (!aviso('EL INVERNADERO NO CABE EN LA PARCELA')) errores.push('falta el aviso de que no cabe');
+    if (cotas(h).length) errores.push('acota un invernadero que no está');
+  } else {
+    const rect = { cx: imp.cx, cy: imp.cy, azimut: imp.azimut, largo: g.largo, ancho: g.ancho_total };
+    const dist = HOJAS.PARCELA.holguraRect(terreno.anillos, rect).distancia;
+    const debeCumplir = dist >= holgura - 1e-6;
+    if (e.cabe !== debeCumplir) errores.push(`cabe = ${e.cabe}, debería ser ${debeCumplir} (distancia ${dist}, exigida ${holgura})`);
+    if (!casi(e.distancia, dist)) errores.push('la distancia mínima no es la exacta');
+    if (aviso('EL INVERNADERO NO CUMPLE LA DISTANCIA A LINDEROS') === debeCumplir) errores.push('aviso de distancia equivocado');
+    // Invernadero donde dice la implantación, a escala y con su orientación real
+    const G = d.invernadero, esperado = HOJAS.PARCELA.esquinas(rect).map(d.transformar);
+    if (G.some((q, i) => Math.hypot(q[0] - esperado[i][0], q[1] - esperado[i][1]) > 1e-6)) errores.push('el invernadero no está donde dice la implantación');
+    const L = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (!casi(L(G[0], G[1]), g.largo * 1000 / E) || !casi(L(G[1], G[2]), g.ancho_total * 1000 / E)) errores.push('el invernadero no está a escala');
+    if (!mismoAngulo(anguloPapel([G[0], G[1]]), imp.azimut + h.giroHoja)) errores.push(`largo del invernadero a ${anguloPapel([G[0], G[1]]).toFixed(1)}° en el papel; debería ir a ${imp.azimut}° + giro de la hoja`);
+    const svgInv = (h.svg.match(/data-invernadero="([^"]+)"/) || [])[1];
+    if (!svgInv) errores.push('falta el invernadero en el SVG');
+    for (const v of [g.largo, g.ancho_total]) if (!cotas(h).some(c => c.includes('invernadero total') && c.endsWith(` ${fmt(v)}`))) errores.push(`falta la cota ${fmt(v)}`);
+    if (debeCumplir && !h.svg.includes(`Distancia mínima al lindero ${fmt(dist)} m`)) errores.push('falta la distancia mínima en las notas');
+  }
+  // Toda la parcela (y sus huecos) dentro del espacio de dibujo, a escala
+  const disp = d.disponible;
+  for (const a of terreno.anillos) {
+    const q = a.map(d.transformar);
+    if (q.some(([x, y]) => x < disp.x - 1e-6 || x > disp.x + disp.w + 1e-6 || y < disp.y - 1e-6 || y > disp.y + disp.h + 1e-6)) errores.push('la parcela se sale del espacio de dibujo');
+    const l0 = Math.hypot(a[1][0] - a[0][0], a[1][1] - a[0][1]), l1 = Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]);
+    if (!casi(l1, l0 * 1000 / E)) errores.push('la parcela no está a la escala del cajetín');
+  }
+  if (terreno.anillos.length > 1 && (h.svg.match(/fill-rule="evenodd"/g) || []).length < 1) errores.push('no se dibujan los huecos');
 }
 
 const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion, emplazamiento };

@@ -83,6 +83,24 @@ console.log('1. Guardar y abrir proyecto');
   comprobar('tipo incorrecto', PROYECTO.leer(malo, catalogo).errores.some(e => e.includes('naves')));
 }
 
+{
+  // Fase 6: parcela del Catastro, implantación, retranqueos y perfil
+  const terreno = { anillos: [[[0, 0], [100, 0], [100, 60], [0, 60]]], meta: { refcat: '00000X00000000', area: 6000 },
+    implantacion: { cx: 50, cy: 30, azimut: 90, largo: 80, ancho: 40 } };
+  const estado = { modelo: 'MT-GOT-96', naves: 5, tramos: 20, terreno, retranqueo: 5, camino: 4, perfil: 'clima', orientacion_preferida: 'este_oeste' };
+  const vuelta = PROYECTO.leer(JSON.stringify(PROYECTO.serializar(estado, catalogo, null)), catalogo);
+  comprobar('terreno: ida y vuelta', !vuelta.errores.length && igual(vuelta.estado.terreno, terreno) && vuelta.estado.retranqueo === 5 && vuelta.estado.camino === 4 && vuelta.estado.perfil === 'clima' && vuelta.estado.orientacion_preferida === 'este_oeste');
+  const sinTerreno = PROYECTO.leer(JSON.stringify(PROYECTO.serializar(Object.assign({}, estado, { terreno: null }), catalogo, null)), catalogo);
+  comprobar('terreno null: se abre sin parcela', !sinTerreno.errores.length && sinTerreno.estado.terreno === null);
+  for (const [nombre, malo] of [['anillo con 2 puntos', { anillos: [[[0, 0], [1, 1]]] }], ['punto no numérico', { anillos: [[[0, 0], [1, 'a'], [2, 2]]] }],
+    ['sin anillos', {}], ['implantación incompleta', Object.assign({}, terreno, { implantacion: { cx: 1 } })]]) {
+    const a = PROYECTO.serializar(estado, catalogo, null);
+    a.proyecto.terreno = malo;
+    const r = PROYECTO.leer(JSON.stringify(a), catalogo);
+    comprobar(`terreno no válido (${nombre}): no se abre`, r.estado === null && r.errores.some(e => e.includes('terreno')));
+  }
+}
+
 console.log('2. Lista de materiales en Excel');
 {
   // Con obra local, ventana mariposa y el motor con un origen distinto de «estimado» (tienda)

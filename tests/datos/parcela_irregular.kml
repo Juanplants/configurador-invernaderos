@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Parcela de ejemplo (inventada)</name>
+    <Placemark>
+      <name>00000X00000000</name>
+      <description>Parcela de EJEMPLO inventada para las pruebas. No corresponde a ningún inmueble real.</description>
+      <Polygon>
+        <outerBoundaryIs><LinearRing><coordinates>-2.439375806,36.819537635,0 -2.436999788,36.819400205,0 -2.436723434,36.820390500,0 -2.437596528,36.820592953,0 -2.437458156,36.821115144,0 -2.438667167,36.821382280,0 -2.439567895,36.820872698,0 -2.439438871,36.820114865,0 -2.439375806,36.819537635,0</coordinates></LinearRing></outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
