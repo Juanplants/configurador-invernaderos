@@ -69,10 +69,11 @@ function casos() {
   // Emplazamiento sobre polígono: invernadero colocado por el optimizador (encajar)
   const ejemplo = PARCELA.leer(fs.readFileSync(path.join(__dirname, 'datos', 'parcela_irregular.gml'), 'utf8'), 'parcela_irregular.gml');
   const conHueco = parcelaConHueco();
-  const poligono = (nombre, modelo, naves, tramos, parcela, { retranqueo = 3, camino = 4, mover = null } = {}) => {
+  const poligono = (nombre, modelo, naves, tramos, parcela, { retranqueo = 3, camino = 4, mover = null, orientacion = 'norte_sur', azimut = null } = {}) => {
     const g = GEO.calcular(modelo, { naves, tramos });
-    let implantacion = OPTIMIZADOR.encajar(parcela.anillos, g.largo, g.ancho_total, Math.max(retranqueo, camino));
+    let implantacion = OPTIMIZADOR.encajar(parcela.anillos, g.largo, g.ancho_total, Math.max(retranqueo, camino), orientacion);
     if (mover) implantacion = OPTIMIZADOR.encajar(parcela.anillos, g.largo, g.ancho_total, 0);
+    if (azimut !== null) implantacion = { cx: 0, cy: 0, azimut, largo: g.largo, ancho: g.ancho_total };
     const terreno = { anillos: parcela.anillos, meta: parcela.meta, implantacion, retranqueo: mover ? mover : retranqueo, camino };
     lista.push({ vista: 'emplazamiento', nombre: `emplazamiento ${modelo.id} ${naves} naves × ${tramos} tramos, ${nombre}`, modelo, naves, tramos, g, terreno });
   };
@@ -81,6 +82,9 @@ function casos() {
     poligono('parcela del Catastro, sin camino', modelo, 2, 10, ejemplo, { camino: 0 });
     poligono('parcela con hueco', modelo, 4, 15, conHueco);
     poligono('parcela del Catastro, no cabe', modelo, 20, 60, ejemplo);
+    poligono('parcela del Catastro, cumbrera este-oeste', modelo, 6, 15, ejemplo, { orientacion: 'este_oeste' });
+    poligono('parcela del Catastro, invernadero a 35°', modelo, 5, 12, ejemplo, { azimut: 35 });
+    poligono('parcela con hueco, invernadero a 125°', modelo, 3, 10, conHueco, { azimut: 125, camino: 0 });
   }
   const m96 = catalogo.modelos.find(m => m.id === 'MT-GOT-96');
   poligono('parcela del Catastro, grande', m96, 10, 30, ejemplo);

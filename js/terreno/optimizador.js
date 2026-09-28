@@ -1,12 +1,14 @@
 // ============================================================
 // Optimizador de implantación (fase 6)
 // ============================================================
-// const r = OPTIMIZADOR.buscar({ anillos, catalogo, holgura, perfil, base })
+// const r = OPTIMIZADOR.buscar({ anillos, catalogo, holgura, perfil, orientacion, base })
 //   anillos: parcela en metros (PARCELA.leer / PARCELA.rectangulo)
 //   holgura: distancia mínima del invernadero a los linderos (m)
 //   perfil: 'equilibrado' | 'aprovechar' | 'minimo_coste' | 'clima' (o pesos propios)
+//   orientacion: cumbrera preferida 'norte_sur' (defecto) | 'este_oeste' | 'indiferente'
+//   azimuts: opcional, solo estas orientaciones (grados) en vez de todas cada 5°
 //   base: resto del proyecto para el motor (seleccion, opcionales, puertas, zona, sitio)
-// → { mejores: [3 candidatas distintas en modelo o nº de naves], candidatas, todas, avisos }
+// → { mejores: [3 candidatas distintas: la mejor de cada modelo + ventana], candidatas, todas, avisos }
 //
 // 1. Para cada orientación (cada 5°) se rasteriza la parcela en el marco girado
 //    y se buscan los rectángulos útiles máximos (histograma por filas): para
@@ -15,8 +17,11 @@
 // 2. Para cada modelo apto, ancho de nave y separación, y cada nº de naves,
 //    el largo libre da los tramos. Luego se ajusta con la geometría exacta
 //    (la rejilla es conservadora): se prueba un tramo o una nave más.
-// 3. Cada combinación distinta se calcula con el motor (€/m², ventilación) y se
-//    puntúa con los pesos del perfil (especificación, apartado 5).
+// 3. Cada combinación distinta se calcula con el motor (€/m², ventilación) con
+//    cada ventana cenital del catálogo para ese modelo (una hoja, mariposa…), y
+//    se puntúa con los pesos del perfil (especificación, apartado 5).
+// 4. Las mejores: la de más puntuación de cada modelo + ventana; las que quedan
+//    por debajo del límite rojo de ventilación van al final, con aviso.
 
 (function (raiz) {
   const req = (n) => (typeof require !== 'undefined' ? require(n) : null);
@@ -32,15 +37,21 @@
     minimo_coste: { nombre: 'Mínimo coste',          coste: 0.60, superficie: 0.20, ventilacion: 0.10, orientacion: 0.10 },
     clima:        { nombre: 'Clima y ventilación',   coste: 0.25, superficie: 0.20, ventilacion: 0.40, orientacion: 0.15 }
   };
-  // Orientación preferida de la cumbrera (lado largo): norte-sur. La puntuación
-  // es |cos(azimut − preferido)|: 1 en N-S, 0 en E-O.
-  const ORIENTACION_PREFERIDA = 0;
+  // Orientación preferida de la cumbrera (lado largo), dato del proyecto.
+  // Puntuación: N-S |cos(azimut)|, E-O |sin(azimut)|, indiferente 1 en todas.
+  const ORIENTACIONES = {
+    norte_sur:   { nombre: 'Cumbrera norte-sur', puntua: (az) => Math.abs(Math.cos(rad(az))) },
+    este_oeste:  { nombre: 'Cumbrera este-oeste', puntua: (az) => Math.abs(Math.sin(rad(az))) },
+    indiferente: { nombre: 'Indiferente', puntua: () => 1 }
+  };
+  const ORIENTACION_PREFERIDA = 'norte_sur';
+  const GRUPO_VENTANA = 'ventilacion_cenital';
   const PASO = 5;          // grados entre orientaciones
   const CELDAS = 220;      // celdas en el lado mayor de la rejilla
   const TRAMOS_MIN = 2;
 
   const rad = (g) => g * Math.PI / 180;
-  const puntuaOrientacion = (azimut) => Math.abs(Math.cos(rad(azimut - ORIENTACION_PREFERIDA)));
+  const puntuaOrientacion = (azimut, pref = ORIENTACION_PREFERIDA) => (ORIENTACIONES[pref] || ORIENTACIONES[ORIENTACION_PREFERIDA]).puntua(azimut);
 
   // Marco girado: Y a lo largo del azimut β (el largo del invernadero), X perpendicular
   function marco(beta) {
@@ -121,8 +132,9 @@
   }
 
   // pesos: opcional, sustituye al perfil ({ coste, superficie, ventilacion, orientacion })
-  function buscar({ anillos, catalogo, holgura = 0, perfil = 'equilibrado', pesos: propios = null, base = {}, cuantas = 3 }) {
+  function buscar({ anillos, catalogo, holgura = 0, perfil = 'equilibrado', pesos: propios = null, orientacion = ORIENTACION_PREFERIDA, azimuts = null, base = {}, cuantas = 3 }) {
     const pesos = propios || PERFILES[perfil] || PERFILES.equilibrado;
+    const rojo = AVI.CONFIG.ventilacion_rojo;
     const avisos = [];
     const modelos = catalogo.modelos.filter(m => {
       const apto = AVI.emplazamiento(m, base.sitio);
@@ -131,7 +143,10 @@
     });
     // 1-2. Candidatas geométricas, una por combinación de medidas (la de mejor orientación)
     const porMedidas = new Map();
-    for (let beta = 0; beta < 180; beta += PASO) {
+    // Orientaciones: cada 5°, o solo las pedidas (p. ej. paralela y a 90° de una parcela rectangular)
+    const betas = azimuts ? [...new Set(azimuts.map(b => ((Math.round(b) % 180) + 180) % 180))]
+      : Array.from({ length: 180 / PASO }, (_, i) => i * PASO);
+    for (const beta of betas) {
       const libre = escalera(anillos, beta, holgura);
       for (const m of modelos) {
         const maxN = m.max_naves || 50, maxL = m.max_longitud || Infinity;
@@ -152,8 +167,9 @@
               }
               const clave = `${m.id}|${w}|${s}|${n}|${t}`;
               const previa = porMedidas.get(clave);
-              const orient = puntuaOrientacion(beta);
-              if (!previa || orient > previa.orientacion + 1e-9) {
+              const orient = puntuaOrientacion(beta, orientacion);
+              // Misma puntuación de orientación: la que deja más distancia a los linderos
+              if (!previa || orient > previa.orientacion + 1e-9 || (Math.abs(orient - previa.orientacion) < 1e-9 && rect.holgura > previa.implantacion.holgura + 1e-9)) {
                 porMedidas.set(clave, { modelo: m, ancho_nave: w, separacion: s, naves: n, tramos: t, azimut: beta, orientacion: orient, implantacion: rect });
               }
             }
@@ -161,20 +177,28 @@
         }
       }
     }
-    // 3. Motor y puntuación
+    // 3. Motor, con cada ventana cenital del modelo, y puntuación
     const candidatas = [];
     for (const c of porMedidas.values()) {
-      const r = MOTOR.calcular(catalogo, {
-        modelo: c.modelo.id, naves: c.naves, tramos: c.tramos, ancho_nave: c.ancho_nave, separacion: c.separacion,
-        altura_canal: GEO.lista(c.modelo.alturas_a_canal_admitidas)[0], puertas: base.puertas ?? 1,
-        seleccion: seleccionPara(catalogo, c.modelo, base.seleccion), opcionales: base.opcionales || [], zona: base.zona, sitio: base.sitio
-      });
-      if (r.avisos.some(a => a.nivel === 'rojo' && (a.codigo === 'rango' || a.codigo === 'error'))) continue;
-      if (!Number.isFinite(r.precio.eur_m2)) continue;
-      candidatas.push(Object.assign(c, {
-        area: r.geometria.area, largo: r.geometria.largo, ancho: r.geometria.ancho_total,
-        eur_m2: r.precio.eur_m2, total: r.precio.total, ventilacion: r.ventilacion.pct_total, ventilacion_cenital: r.ventilacion.pct_cenital
-      }));
+      const sel = seleccionPara(catalogo, c.modelo, base.seleccion);
+      for (const ventana of ventanasPara(catalogo, c.modelo, sel[GRUPO_VENTANA])) {
+        const seleccion = Object.assign({}, sel, { [GRUPO_VENTANA]: ventana ? ventana.id : null });
+        const r = MOTOR.calcular(catalogo, {
+          modelo: c.modelo.id, naves: c.naves, tramos: c.tramos, ancho_nave: c.ancho_nave, separacion: c.separacion,
+          altura_canal: GEO.lista(c.modelo.alturas_a_canal_admitidas)[0], puertas: base.puertas ?? 1,
+          seleccion, opcionales: base.opcionales || [], zona: base.zona, sitio: base.sitio
+        });
+        if (r.avisos.some(a => a.nivel === 'rojo' && (a.codigo === 'rango' || a.codigo === 'error'))) continue;
+        if (!Number.isFinite(r.precio.eur_m2)) continue;
+        const enRojo = r.ventilacion.pct_total < rojo;
+        candidatas.push(Object.assign({}, c, {
+          ventana: ventana ? { id: ventana.id, nombre: ventana.nombre } : null, seleccion,
+          area: r.geometria.area, largo: r.geometria.largo, ancho: r.geometria.ancho_total,
+          eur_m2: r.precio.eur_m2, total: r.precio.total, ventilacion: r.ventilacion.pct_total, ventilacion_cenital: r.ventilacion.pct_cenital,
+          enRojo,
+          aviso: enRojo ? `Ventilación ${(r.ventilacion.pct_total * 100).toFixed(1).replace('.', ',')} % del suelo, por debajo del ${Math.round(rojo * 100)} % aun con la mejor ventana del catálogo.` : ''
+        }));
+      }
     }
     if (!candidatas.length) return { mejores: [], candidatas: 0, todas: [], perfil: pesos.nombre || 'Personalizado', pesos, avisos: avisos.concat(['No cabe ningún invernadero en la parcela con esa distancia a los linderos.']) };
     const rango = (k) => { const v = candidatas.map(c => c[k]); return [Math.min(...v), Math.max(...v)]; };
@@ -189,28 +213,45 @@
       c.puntuacion = pesos.coste * c.detalle.coste + pesos.superficie * c.detalle.superficie
         + pesos.ventilacion * c.detalle.ventilacion + pesos.orientacion * c.detalle.orientacion;
     }
-    candidatas.sort((a, b) => b.puntuacion - a.puntuacion || b.area - a.area);
-    // Las mejores, distintas de verdad: una por modelo y nº de naves
-    const vistas = new Set(), mejores = [];
-    for (const c of candidatas) {
-      const k = `${c.modelo.id}|${c.naves}`;
-      if (vistas.has(k)) continue;
-      vistas.add(k);
-      mejores.push(c);
+    // Las que no llegan al límite rojo de ventilación, siempre detrás
+    candidatas.sort((a, b) => (a.enRojo - b.enRojo) || b.puntuacion - a.puntuacion || b.area - a.area);
+    // 4. Distintas de verdad: la mejor de cada modelo + ventana; si no hay 3 grupos,
+    //    se completa con otra orientación y, en último caso, con otro nº de naves
+    const mejores = [];
+    const claves = [(c) => `${c.modelo.id}|${c.ventana && c.ventana.id}`, (c) => `${c.modelo.id}|${c.ventana && c.ventana.id}|${c.azimut}`, (c) => `${c.modelo.id}|${c.ventana && c.ventana.id}|${c.azimut}|${c.naves}`];
+    for (const clave of claves) {
+      const vistas = new Set(mejores.map(clave));
+      for (const c of candidatas) {
+        if (mejores.length === cuantas) break;
+        if (vistas.has(clave(c)) || mejores.includes(c)) continue;
+        vistas.add(clave(c));
+        mejores.push(c);
+      }
       if (mejores.length === cuantas) break;
     }
-    return { mejores, candidatas: candidatas.length, todas: candidatas, avisos, perfil: pesos.nombre || 'Personalizado', pesos };
+    mejores.sort((a, b) => (a.enRojo - b.enRojo) || b.puntuacion - a.puntuacion);
+    if (mejores.some(c => c.enRojo)) avisos.push(`Alguna opción queda por debajo del ${Math.round(rojo * 100)} % de ventilación aun con la mejor ventana del catálogo: se muestra al final, con aviso.`);
+    return { mejores, candidatas: candidatas.length, todas: candidatas, avisos, perfil: pesos.nombre || 'Personalizado', pesos, orientacion: ORIENTACIONES[orientacion] ? orientacion : ORIENTACION_PREFERIDA };
+  }
+
+  // Ventanas cenitales que admite el modelo (alternativas del grupo); si no hay
+  // ninguna en el catálogo, se calcula con la elección del proyecto
+  function ventanasPara(catalogo, modelo, elegida) {
+    const lista = catalogo.componentes.filter(c => c.grupo_alternativas === GRUPO_VENTANA
+      && String(c.modelos || '').split(';').map(s => s.trim()).includes(modelo.id));
+    if (lista.length) return lista;
+    return [elegida ? { id: elegida, nombre: elegida } : null];
   }
 
   // Coloca unas medidas fijas (largo × ancho) en la parcela: la orientación con mejor
   // puntuación en la que caben. null si no caben con la holgura pedida.
-  function encajar(anillos, largo, ancho, holgura = 0) {
+  function encajar(anillos, largo, ancho, holgura = 0, orientacion = ORIENTACION_PREFERIDA) {
     const opciones = [];
     for (let beta = 0; beta < 180; beta += PASO) {
       const hueco = escalera(anillos, beta, holgura)(ancho);
       if (hueco && hueco.alto >= largo - 1e-9) opciones.push({ beta, hueco });
     }
-    opciones.sort((a, b) => puntuaOrientacion(b.beta) - puntuaOrientacion(a.beta) || (b.hueco.alto - a.hueco.alto));
+    opciones.sort((a, b) => puntuaOrientacion(b.beta, orientacion) - puntuaOrientacion(a.beta, orientacion) || (b.hueco.alto - a.hueco.alto));
     for (const { beta, hueco } of opciones) {
       const r = ajustar(anillos, { cx: hueco.centro[0], cy: hueco.centro[1], azimut: beta, largo, ancho }, holgura, hueco.celda);
       if (r) return r;
@@ -218,7 +259,7 @@
     return null;
   }
 
-  const API = { buscar, encajar, PERFILES, ORIENTACION_PREFERIDA, PASO, puntuaOrientacion, escalera };
+  const API = { buscar, encajar, PERFILES, ORIENTACIONES, ORIENTACION_PREFERIDA, GRUPO_VENTANA, PASO, puntuaOrientacion, escalera };
   raiz.OPTIMIZADOR = API;
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
