@@ -18,7 +18,7 @@ def celda(ws, ident, columna):
     return ws.cell(row=fila, column=col)
 
 wb = load_workbook(ORIGEN)
-comp, modelos, perfiles = wb["Componentes"], wb["Modelos"], wb["Perfiles"]
+comp, modelos, perfiles, equipos = wb["Componentes"], wb["Modelos"], wb["Perfiles"], wb["Equipos"]
 
 # --- Errores ---
 celda(comp, "C02", "Ref").value = "ARC-42|ARC-99"                  # referencia inexistente
@@ -27,6 +27,7 @@ celda(comp, "C09", "Fórmula avanzada").value = "(4+2*ceil(tramos/5))*kg_arriost
 celda(comp, "C12", "Fórmula avanzada").value = "2*naves*largo+"     # fórmula que no se evalúa
 celda(comp, "C04", "Factor").value = "naves*5|naves*6|naves*7"      # 3 variantes para 2 modelos
 celda(modelos, "MT-GOT-96", "Alturas a canal admitidas").value = None  # modelo sin alturas
+celda(equipos, "PUE-3x3", "Ancho puerta").value = "tres"             # medida de puerta no numérica
 
 # --- Avisos (no impiden cargar) ---
 celda(perfiles, "TUB-25", "Precio").value = "consultar"             # precio no numérico
