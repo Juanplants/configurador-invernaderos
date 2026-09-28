@@ -18,6 +18,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `js/exportar.js` | Exportación de las hojas a **PDF vectorial A3** (escala real al imprimir en A3 al 100 %) |
 | `js/proyecto.js` | **Guardar y abrir proyecto** (.json) con la identidad del catálogo (fase 5) |
 | `js/excel.js` | **Lista de materiales en Excel** (SheetJS): hoja con precios y hoja de petición de oferta sin precios (fase 5) |
+| `js/terreno/parcela.js` | **Parcela del Catastro** (fase 6): lee el GML (INSPIRE) o KML de la Sede sin conexión y lo pasa a metros; distancia exacta de un rectángulo a los linderos |
+| `js/terreno/optimizador.js` | **Optimizador** (fase 6): mayor rectángulo útil por orientación, candidatas por modelo/ancho/separación y puntuación por perfil de prioridad |
 | `js/importador.js` | **Importador y validador del catálogo** (fase 1): lee la plantilla `.xlsx` en el navegador |
 | `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5, jsPDF 4.2.1, svg2pdf.js 2.8.1 (versiones, origen y licencias en `lib/LEEME.md`) |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
@@ -28,9 +30,12 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
 | `tests/importacion.js` | Pruebas del importador (36): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
-| `tests/planos.js` | Pruebas de las cinco hojas (217 comprobaciones, 208 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte |
-| `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (208 hojas) |
-| `tests/salidas.js` | Pruebas de las salidas (44): proyecto (ida y vuelta, catálogo distinto, archivos malos), Excel (releído y comparado con el motor; oferta sin precios), propuesta (capítulos, distribuidor, planos A3, asteriscos en tres catálogos) |
+| `tests/planos.js` | Pruebas de las cinco hojas (227 comprobaciones, 218 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte; con parcela real, polígono a escala, distancia mínima exacta, cumple / no cumple / no cabe |
+| `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (218 hojas, 10 sobre parcela real) |
+| `tests/terreno.js` | Pruebas del terreno y el optimizador (76): GML = KML, UTM contra pyproj, huecos, varios recintos, sistemas y archivos malos; distancia a linderos; pesos = especificación; cada candidata cumple la holgura; óptimo analítico en una parcela rectangular; un solo criterio → la mejor en ese criterio |
+| `tests/terreno_navegador.js` | En la app sin conexión: cargar GML/KML, las 3 mejores = optimizador en node, elegir, planos y PDF, guardar/abrir con parcela, rectángulo a mano (se omite sin Playwright) |
+| `tests/generar_parcelas.py` → `tests/datos/parcela_irregular.gml` / `.kml` | Parcela de ejemplo **inventada** (8 vértices, cóncava, ~4 ha) en formato del Catastro; necesita pyproj |
+| `tests/salidas.js` | Pruebas de las salidas (50): proyecto (ida y vuelta, catálogo distinto, archivos malos), Excel (releído y comparado con el motor; oferta sin precios), propuesta (capítulos, distribuidor, planos A3, asteriscos en tres catálogos) |
 | `tests/salidas_navegador.js` | Las tres salidas en la app sin conexión; propuesta impresa: A4 + una página A3 por plano a 420 × 297 mm (se omite sin Playwright) |
 | `tests/pdf_navegador.js` | Exportación en Chromium sin conexión: nombres, páginas A3, escala real medida en el PDF, títulos, sin peticiones externas (se omite sin Playwright) |
 | `tests/planos_navegador.js` | En Chromium, cada texto real cabe en su caja estimada (se omite sin Playwright) |
@@ -49,6 +54,8 @@ node tests/planos_navegador.js   # opcional, necesita Playwright
 node tests/pdf_navegador.js      # opcional, necesita Playwright
 node tests/salidas.js
 node tests/salidas_navegador.js  # opcional, necesita Playwright
+node tests/terreno.js
+node tests/terreno_navegador.js  # opcional, necesita Playwright
 ```
 
 Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
@@ -88,7 +95,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Cotas:** fuera del dibujo; cadena de vanos por dentro y total por fuera. Si el texto de cada vano no cabe entre sus líneas, se agrupan los vanos iguales (`60 × 4,00`).
 - **Registro de cajas** (`HOJA.Registro`): cada texto, burbuja, línea de cota y el contorno del dibujo apuntan su caja; un texto se coloca en la primera posición candidata que no pisa nada. Si un texto obligatorio no cabe, queda en `fallos`. El ancho de los textos se estima con una tabla por carácter holgada; `tests/planos_navegador.js` comprueba en Chromium que el texto real cabe.
 - **Hojas hechas:** 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento (si hay parcela).
-- **Emplazamiento (05):** parcela rectangular introducida a mano (largo, ancho y ángulo de su lado largo respecto al norte), dibujada con el lado más largo en horizontal y la flecha del norte girada. Invernadero centrado, paralelo o girado 90°, con las distancias a los cuatro linderos acotadas; si no cabe, se dibuja igual con el aviso «El invernadero no cabe en la parcela» y lo que falta (también en el resumen de la app). Con parcela, la planta dibuja el norte. La parcela real del catastro queda para la fase 6.
+- **Emplazamiento (05):** parcela rectangular introducida a mano (largo, ancho y ángulo de su lado largo respecto al norte), dibujada con el lado más largo en horizontal y la flecha del norte girada. Invernadero centrado, paralelo o girado 90°, con las distancias a los cuatro linderos acotadas; si no cabe, se dibuja igual con el aviso «El invernadero no cabe en la parcela» y lo que falta (también en el resumen de la app). Con parcela, la planta dibuja el norte. Con la parcela del Catastro (fase 6) dibuja el polígono real: ver «Terreno y optimizador».
 - **Textos:** todos pasan por `HOJA.aWinAnsi` (juego de la Helvetica del PDF); un carácter fuera de él se sustituye (≈ → «aprox.») o sale como «?».
 - **Sección y alzado frontal:** arco dibujado como la parábola de luz = ancho de nave y flecha del catálogo (la misma forma con la que el motor calcula longitud de arco y volumen). Alturas a canal, flecha y cumbrera acotadas. Si el invernadero entero cabe a 1:300 o mayor, se dibuja completo; si no, se interrumpe a la mayor escala en la que quepan al menos 2 naves, con tantas como llenen el ancho (p. ej. 15 naves de 9,60 m: 3 naves a 1:100). La cota de la interrupción dice cuántas naves faltan y la total es la real.
 - **Puertas:** medidas de la hoja Equipos («Ancho puerta», «Alto puerta»); cantidad de la partida de puertas. Una por nave en el hastial frontal y el resto en el trasero, en el hueco entre pilares de hastial más centrado de la nave. Se dibujan en planta (hoja corredera por fuera del hastial) y en el alzado frontal.
@@ -104,6 +111,16 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Excel** (botón en la lista de materiales): `<código>_materiales_<fecha>.xlsx`. Hoja «Materiales»: categoría, partida, referencia, cantidad, unidad, kg, precio unitario, importe, origen del catálogo y cálculo; al final obra local, base, IVA y total. Hoja «Petición de oferta»: sin precios, encabezados en español e inglés, datos del invernadero, especificación de cada referencia y columnas vacías para el precio y las observaciones del fabricante.
 - **Propuesta**: capítulos = categorías del catálogo, con el texto de propuesta de cada partida; distribuidor en portada y en «Datos de la oferta»; cada plano en una página A3 apaisada propia (CSS `@page plano-a3`) a escala real al imprimir, el resto en A4; nota de planos informativos. Todo valor que sea o dependa de un dato estimado lleva asterisco (partidas, precios por categoría y totales, acero, ventilación, altura a cumbrera, volumen, garantía).
 
+## Terreno y optimizador (fase 6)
+
+- **Parcela del Catastro** (Emplazamiento → «Cargar parcela del Catastro»): el GML (INSPIRE, `cp:CadastralParcel`, `gml:Polygon` o `gml:PolygonPatch`) o el KML que el usuario descarga de la Sede; se lee del disco, sin conexión. Sistemas: ETRS89/WGS84 UTM husos 28-31 (EPSG 25828-31, 32628-31), geográficas (4258, 4326; en GML el orden es latitud, longitud) y ED50 (23028-31) con aviso. Se pasa a un plano local en metros (x al este, y al norte, radios del elipsoide GRS80): son medidas **reales en el terreno**, un 0,04 % mayores que las del plano UTM (la superficie declarada del Catastro es la del plano UTM). Huecos interiores y varios recintos (se usa el mayor) con aviso; aviso si la superficie difiere > 2 % de la declarada. Referencia catastral de `nationalCadastralReference`/`localId` o del nombre del KML. Con parcela del Catastro se ocultan los campos del rectángulo a mano; «Quitar parcela» vuelve a ellos.
+- **Retranqueos** (datos del proyecto, se guardan en el .json): retranqueo a linderos (3 m por defecto) y camino perimetral (4 m). La distancia mínima exigida es **la mayor de las dos** (el camino puede ir dentro del retranqueo); se aplica también a la parcela rectangular. Valores por defecto a revisar con la normativa de cada municipio.
+- **Optimizador** (`OPTIMIZADOR.buscar`): para cada orientación cada 5° (0-175°) rasteriza la parcela en el marco girado (220 celdas en el lado mayor; útil = dentro, fuera de huecos y a la holgura del lindero) y obtiene, para cada ancho, el mayor largo libre (histograma por filas). Para cada modelo apto (el no apto por viento se descarta con aviso), ancho de nave, separación y nº de naves, los tramos que caben (máx. `max_longitud`, mín. 2); después se ajusta con la geometría exacta (la rejilla es conservadora) y se prueba un tramo más. Cada combinación distinta pasa por el motor (€/m², ventilación) y se puntúa: coste = (€/m² máx − €/m²)/(máx − mín), superficie = área/área máx, ventilación = (v − mín)/(máx − mín), orientación = |cos(azimut)| (**cumbrera norte-sur preferida**, `ORIENTACION_PREFERIDA`), con los pesos del perfil (apartado 5). Se muestran las 3 mejores distintas en modelo o nº de naves. Tarda ≈ 1 s con el catálogo de ejemplo.
+- **Elegir** una tarjeta rellena modelo, naves, tramos, ancho y separación, guarda la implantación (centro, azimut) y abre el emplazamiento; con el rectángulo a mano marca «girado 90°» si hace falta. Si luego se cambian las medidas a mano, el invernadero se vuelve a encajar (mejor orientación en la que cabe) o se avisa de que no cabe.
+- **Plano de emplazamiento con parcela real**: todo girado para que el largo del invernadero quede en horizontal y el norte girado con él; lindero (y huecos), invernadero con canales, banda del camino perimetral, cotas del invernadero y **distancia mínima exacta** al lindero (línea entre los dos puntos más cercanos). Avisos «NO CABE» (sin implantación posible) y «NO CUMPLE LA DISTANCIA A LINDEROS».
+- **Ejemplo** (parcela inventada, 4 m a linderos): 15 naves × 9,60 m × 120 m (17.280 m², 20,40 €/m², 0°). Con el catálogo de ejemplo los perfiles coinciden en la primera opción porque la más grande es también la de menor €/m² (los costes fijos se reparten entre más metros); el orden de las siguientes sí cambia, y con pesos de un solo criterio gana la mejor en ese criterio (probado).
+- Pendiente: zona de viento/nieve automática por municipio desde la referencia catastral; pendiente del terreno.
+
 ## Siguientes pasos (en orden)
 
 1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 cuando se pueda descargar de `cdn.sheetjs.com` (instrucciones en `lib/LEEME.md`).
@@ -111,6 +128,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
 5. **Fase 5 — salidas**: proyecto .json, Excel y propuesta hechos (ver «Salidas»); falta el paso a paso de la interfaz (flujo de 6 pasos de la especificación).
+6. ~~**Fase 6 — terreno y optimizador**~~ **Hecho** (2026-09-28): ver «Terreno y optimizador». Falta probarlo con parcelas reales de clientes (sin subirlas al repositorio).
 
 ## Reglas de trabajo
 
