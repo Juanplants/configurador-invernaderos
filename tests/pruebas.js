@@ -57,6 +57,18 @@ console.log('Caso v0.3 (63 pilares / 42 cerchas)');
   comprobar('superficie', r.geometria.area, 960);
 }
 
+// Perfil sin precio: la línea queda sin importe (aviso), sin contaminar los totales
+console.log('Perfil sin precio');
+{
+  const cat = JSON.parse(JSON.stringify(catalogo));
+  delete cat.perfiles.find(p => p.id === 'TUB-25').precio;
+  const r = MOTOR.calcular(cat, CASOS.A_una_hoja);
+  const correas = r.lineas.find(l => l.id === 'C04');
+  comprobar('importe de correas es null', correas.importe === null ? 1 : 0, 1);
+  comprobar('total numérico', Number.isFinite(r.precio.total) ? 1 : 0, 1);
+  comprobar('aviso sin precio', r.avisos.some(a => a.codigo === 'sin_precio') ? 1 : 0, 1);
+}
+
 // Evaluador de expresiones: debe rechazar lo que no sea aritmética permitida
 console.log('Evaluador de expresiones');
 {

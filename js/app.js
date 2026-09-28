@@ -5,14 +5,20 @@
 // (js/motor/). Todos los datos de producto salen del catálogo;
 // aquí solo hay estado de la pantalla y pintado.
 
-const CATALOGO = window.CATALOGO_EJEMPLO;
+// Catálogo activo: el cargado con «Cargar catálogo» en esta sesión o, si no
+// hay ninguno, el de ejemplo (datos/catalogo-ejemplo.js)
+let CATALOGO = window.CATALOGO_EJEMPLO;
+let catalogoImportado = null;   // { archivo, fecha } cuando viene de un Excel
+const CLAVE_SESION = 'configurador.catalogo';
 const lista = MOTOR.geometria.lista;
 
 const state = {
   modelo: CATALOGO.modelos[0].id,
   naves: 3,
   tramos: 11,
-  altura_canal: null,   // null = primera admitida por el modelo
+  // null = primera de la lista del catálogo (el distribuidor ordena la lista
+  // para que su medida habitual vaya delante)
+  altura_canal: null,
   ancho_nave: null,
   separacion: null,
   puertas: 1,
@@ -26,6 +32,96 @@ const state = {
   vistaActual: 'planta',
   verCalculo: false
 };
+
+// ------- Catálogo: cargar, validar, guardar en la sesión -------
+function aplicarCatalogo(catalogo, origen) {
+  CATALOGO = catalogo;
+  catalogoImportado = origen;
+  state.modelo = catalogo.modelos[0].id;
+  state.altura_canal = state.ancho_nave = state.separacion = null;
+  state.seleccion = {};
+  state.opcionales.clear();
+  state.zona = (catalogo.obra_local || [])[0]?.zona || '';
+  // Las listas de modelos y zonas se rellenan de nuevo en el siguiente render
+  document.getElementById('model-select').innerHTML = '';
+  document.getElementById('zona').innerHTML = '';
+  const emp = catalogo.empresa || {};
+  document.getElementById('catalogo-nombre').textContent = origen
+    ? `Catálogo: ${emp.nombre || 'sin nombre'} · ${origen.archivo}`
+    : `Catálogo de ejemplo: ${emp.nombre || ''} (valores estimados)`;
+  document.getElementById('btn-catalogo-ejemplo').hidden = !origen;
+}
+
+// sessionStorage: dura mientras la pestaña esté abierta; no hay servidor.
+// Se vuelve a validar al recuperarlo por si el guardado es de otra versión.
+function catalogoDeSesion() {
+  try {
+    const guardado = JSON.parse(sessionStorage.getItem(CLAVE_SESION));
+    if (guardado && guardado.catalogo && IMPORTADOR.validar(guardado.catalogo).errores.length === 0) return guardado;
+  } catch (_) { /* sin sesión o dato corrupto: se usa el de ejemplo */ }
+  return null;
+}
+function guardarEnSesion(catalogo, origen) {
+  try {
+    if (catalogo) sessionStorage.setItem(CLAVE_SESION, JSON.stringify({ catalogo, origen }));
+    else sessionStorage.removeItem(CLAVE_SESION);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function cargarArchivoCatalogo(archivo) {
+  const lector = new FileReader();
+  lector.onload = () => {
+    const r = IMPORTADOR.importar(XLSX, new Uint8Array(lector.result));
+    let guardado = true;
+    if (!r.errores.length) {
+      const origen = { archivo: archivo.name, fecha: new Date().toLocaleString('es-ES') };
+      aplicarCatalogo(r.catalogo, origen);
+      guardado = guardarEnSesion(r.catalogo, origen);
+      render();
+    }
+    mostrarResultadoCatalogo(archivo.name, r, guardado);
+  };
+  lector.onerror = () => mostrarResultadoCatalogo(archivo.name,
+    { errores: [{ texto: 'No se pudo leer el archivo' }], avisos: [] }, true);
+  lector.readAsArrayBuffer(archivo);
+}
+
+function tablaIncidencias(lista_) {
+  return `<table class="tabla-incidencias">
+    <tr><th>Hoja</th><th class="n">Fila</th><th>Columna</th><th>Qué falla</th></tr>
+    ${lista_.map(x => `<tr><td>${esc(x.hoja || '—')}</td><td class="n">${x.fila ?? ''}</td><td>${esc(x.columna || '')}</td><td>${esc(x.texto)}</td></tr>`).join('')}
+  </table>`;
+}
+
+function mostrarResultadoCatalogo(nombreArchivo, r, guardado) {
+  const n = (k, uno, varios) => `${k} ${k === 1 ? uno : varios}`;
+  let html;
+  if (r.errores.length) {
+    html = `
+      <h3 class="mal">✗ El catálogo no se ha cargado</h3>
+      <p><strong>${esc(nombreArchivo)}</strong> tiene ${n(r.errores.length, 'error', 'errores')}.
+      Corrígelos en el Excel y vuelve a cargarlo. Mientras tanto se sigue usando el catálogo anterior.</p>
+      ${tablaIncidencias(r.errores)}`;
+  } else {
+    const c = r.catalogo;
+    html = `
+      <h3 class="bien">✓ Catálogo cargado</h3>
+      <p><strong>${esc(nombreArchivo)}</strong> · ${esc(c.empresa.nombre || 'sin nombre de empresa')}:
+      ${n(c.modelos.length, 'modelo', 'modelos')}, ${n(c.componentes.length, 'componente', 'componentes')},
+      ${n(c.perfiles.length, 'perfil', 'perfiles')}, ${n((c.obra_local || []).length, 'zona', 'zonas')} de obra local.</p>
+      <p class="hint">${guardado
+        ? 'Queda guardado en esta sesión del navegador: se mantiene al recargar la página y se olvida al cerrar la pestaña.'
+        : 'El navegador no permite guardarlo en la sesión: al recargar la página habrá que cargarlo otra vez.'}</p>`;
+  }
+  if (r.avisos.length) {
+    html += `<h4>${n(r.avisos.length, 'aviso', 'avisos')} (no impiden cargar)</h4>${tablaIncidencias(r.avisos)}`;
+  }
+  document.getElementById('dialogo-catalogo-contenido').innerHTML = html;
+  document.body.classList.add('dialogo-abierto');
+}
 
 // ------- Helpers -------
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -345,7 +441,11 @@ function bindEvents() {
   const entero = (v, min) => Math.max(min, parseInt(v, 10) || min);
   const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e.target); render(); });
 
-  on('model-select', 'change', el => { state.modelo = el.value; depurarSeleccion(); });
+  on('model-select', 'change', el => {
+    state.modelo = el.value;
+    state.altura_canal = state.ancho_nave = state.separacion = null; // valores por defecto del nuevo modelo
+    depurarSeleccion();
+  });
   on('num-naves', 'input', el => { state.naves = entero(el.value, 1); });
   on('num-tramos', 'input', el => { state.tramos = entero(el.value, 1); });
   on('puertas', 'input', el => { state.puertas = entero(el.value, 0); });
@@ -386,12 +486,30 @@ function bindEvents() {
       render();
     }
   });
+  document.getElementById('btn-cargar-catalogo').addEventListener('click', () => {
+    document.getElementById('archivo-catalogo').click();
+  });
+  document.getElementById('archivo-catalogo').addEventListener('change', e => {
+    const archivo = e.target.files[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo tras corregirlo
+    if (archivo) cargarArchivoCatalogo(archivo);
+  });
+  document.getElementById('btn-catalogo-ejemplo').addEventListener('click', () => {
+    aplicarCatalogo(window.CATALOGO_EJEMPLO, null);
+    guardarEnSesion(null);
+    render();
+  });
+  document.getElementById('btn-cerrar-dialogo').addEventListener('click', () => {
+    document.body.classList.remove('dialogo-abierto');
+  });
   document.getElementById('btn-propuesta').addEventListener('click', abrirPropuesta);
   document.getElementById('btn-cerrar-propuesta').addEventListener('click', cerrarPropuesta);
   document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const guardado = catalogoDeSesion();
+  aplicarCatalogo(guardado ? guardado.catalogo : window.CATALOGO_EJEMPLO, guardado ? guardado.origen : null);
   bindEvents();
   render();
 });
