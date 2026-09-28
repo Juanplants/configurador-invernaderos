@@ -152,6 +152,7 @@ function lateral(h, caso, errores) {
 
 // ---------- Emplazamiento ----------
 function emplazamiento(h, caso, errores) {
+  if (caso.terreno) return emplazamientoPoligono(h, caso, errores);
   const { g, parcela } = caso;
   const E = h.escala, mayor = mayorQue(E), e = h.encaje;
   if (mayor && !noVale(HOJAS.EMPLAZAMIENTO.dibujarEmplazamiento(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
@@ -181,6 +182,48 @@ function emplazamiento(h, caso, errores) {
   const azX = parcela.largo >= parcela.ancho ? parcela.orientacion : parcela.orientacion - 90;
   const norte = ((90 - azX) % 360 + 360) % 360;
   if (!h.svg.includes(`rotate(${norte})`)) errores.push(`el norte no está a ${norte}°`);
+}
+
+// Parcela real (polígono): largo del invernadero en horizontal, norte girado con él,
+// cumple o no según la distancia mínima exacta a los linderos (y huecos)
+function emplazamientoPoligono(h, caso, errores) {
+  const { g, terreno } = caso;
+  const E = h.escala, mayor = mayorQue(E), e = h.encaje, d = h.dibujo;
+  if (mayor && !noVale(HOJAS.EMPLAZAMIENTO.dibujarPoligono(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
+  const imp = terreno.implantacion;
+  const holgura = Math.max(terreno.retranqueo, terreno.camino);
+  const aviso = (t) => h.svg.includes(`>${t}<`);
+  const hacia = (a, b) => ((a % 360) + 360) % 360 === ((b % 360) + 360) % 360;
+  if (!imp) {
+    if (e.cabe || e.colocado) errores.push('dice que cabe sin implantación');
+    if (!aviso('EL INVERNADERO NO CABE EN LA PARCELA')) errores.push('falta el aviso de que no cabe');
+    if (cotas(h).length) errores.push('acota un invernadero que no está');
+  } else {
+    const rect = { cx: imp.cx, cy: imp.cy, azimut: imp.azimut, largo: g.largo, ancho: g.ancho_total };
+    const dist = HOJAS.PARCELA.holguraRect(terreno.anillos, rect).distancia;
+    const debeCumplir = dist >= holgura - 1e-6;
+    if (e.cabe !== debeCumplir) errores.push(`cabe = ${e.cabe}, debería ser ${debeCumplir} (distancia ${dist}, exigida ${holgura})`);
+    if (!casi(e.distancia, dist)) errores.push('la distancia mínima no es la exacta');
+    if (aviso('EL INVERNADERO NO CUMPLE LA DISTANCIA A LINDEROS') === debeCumplir) errores.push('aviso de distancia equivocado');
+    // Invernadero a escala, con el largo en horizontal, y sus cotas
+    const G = d.invernadero;
+    if (!casi(G.w, g.largo * 1000 / E) || !casi(G.h, g.ancho_total * 1000 / E)) errores.push('el invernadero no está a escala o no está en horizontal');
+    for (const v of [g.largo, g.ancho_total]) if (!cotas(h).some(c => c.includes('invernadero total') && c.endsWith(` ${fmt(v)}`))) errores.push(`falta la cota ${fmt(v)}`);
+    const esquinas = HOJAS.PARCELA.esquinas(rect).map(d.transformar);
+    for (const [x, y] of esquinas) if (Math.abs(x - G.x) > 1e-6 && Math.abs(x - G.x - G.w) > 1e-6 || Math.abs(y - G.y) > 1e-6 && Math.abs(y - G.y - G.h) > 1e-6) errores.push('el invernadero no está donde dice la implantación');
+    if (debeCumplir && !h.svg.includes(`Distancia mínima al lindero ${fmt(dist)} m`)) errores.push('falta la distancia mínima en las notas');
+    if (!hacia(e.norte, 90 - imp.azimut)) errores.push('norte mal girado');
+  }
+  if (!h.svg.includes(`rotate(${e.norte})`)) errores.push(`el norte no está a ${e.norte}°`);
+  // Toda la parcela (y sus huecos) dentro del espacio de dibujo, a escala: se conservan las distancias
+  const disp = d.disponible;
+  for (const a of terreno.anillos) {
+    const q = a.map(d.transformar);
+    if (q.some(([x, y]) => x < disp.x - 1e-6 || x > disp.x + disp.w + 1e-6 || y < disp.y - 1e-6 || y > disp.y + disp.h + 1e-6)) errores.push('la parcela se sale del espacio de dibujo');
+    const l0 = Math.hypot(a[1][0] - a[0][0], a[1][1] - a[0][1]), l1 = Math.hypot(q[1][0] - q[0][0], q[1][1] - q[0][1]);
+    if (!casi(l1, l0 * 1000 / E)) errores.push('la parcela no está a la escala del cajetín');
+  }
+  if (terreno.anillos.length > 1 && (h.svg.match(/fill-rule="evenodd"/g) || []).length < 1) errores.push('no se dibujan los huecos');
 }
 
 const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion, emplazamiento };
