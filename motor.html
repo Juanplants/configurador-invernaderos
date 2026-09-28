@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motor de cálculo – prueba</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f5f6f7; color: #222; font-size: 14px; }
+  header { background: #2e7d32; color: #fff; padding: 14px 20px; }
+  header h1 { margin: 0; font-size: 18px; } header p { margin: 2px 0 0; font-size: 12px; opacity: .85; }
+  main { display: grid; grid-template-columns: 280px 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  .panel { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; }
+  label { display: block; font-size: 11px; color: #666; margin: 10px 0 3px; }
+  select, input { width: 100%; padding: 7px 8px; border: 1px solid #cfd8dc; border-radius: 4px; font: inherit; box-sizing: border-box; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: #558b2f; margin: 16px 0 6px; }
+  h2:first-child { margin-top: 0; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .kpi { background: #f1f8e9; border-left: 3px solid #2e7d32; padding: 8px 10px; border-radius: 4px; }
+  .kpi small { display: block; font-size: 10px; text-transform: uppercase; color: #558b2f; }
+  .kpi b { font-size: 16px; color: #1b5e20; font-variant-numeric: tabular-nums; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 5px 6px; border-bottom: 1px solid #eee; text-align: left; vertical-align: top; }
+  th { background: #e8f5e9; color: #1b5e20; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.cat td { background: #fafafa; font-weight: 600; color: #2e7d32; }
+  .traza { color: #888; font-size: 11px; }
+  .est { color: #b26a00; font-size: 10px; }
+  .aviso { padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; font-size: 12px; }
+  .rojo { background: #fdecea; border-left: 3px solid #c62828; }
+  .ambar { background: #fff3cd; border-left: 3px solid #ff9800; }
+  .info { background: #e3f2fd; border-left: 3px solid #1976d2; }
+  .tot td { font-weight: 700; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } .kpis { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Motor de cálculo – página de prueba</h1>
+  <p>Catálogo de ejemplo con valores estimados. Solo para desarrollar y comprobar el motor.</p>
+</header>
+<main>
+  <aside class="panel">
+    <h2>Proyecto</h2>
+    <label>Modelo</label><select id="modelo"></select>
+    <label>Número de naves</label><input id="naves" type="number" min="1" value="3">
+    <label>Tramos entre pórticos</label><input id="tramos" type="number" min="1" value="11">
+    <label>Altura a canal (m)</label><select id="altura"></select>
+    <label>Puertas</label><input id="puertas" type="number" min="0" value="1">
+    <h2>Ventilación</h2>
+    <label>Cenital</label>
+    <select id="cenital"><option value="C20">Una hoja</option><option value="C21">Mariposa</option><option value="">Techo cerrado</option></select>
+    <label>Laterales</label>
+    <select id="lateral"><option value="C23">Enrollables</option><option value="">Sin laterales</option></select>
+    <h2>Emplazamiento</h2>
+    <label>Zona (obra local)</label><select id="zona"></select>
+    <label>Viento de diseño del sitio (km/h)</label><input id="viento" type="number" placeholder="opcional">
+  </aside>
+  <section class="panel">
+    <div class="kpis" id="kpis"></div>
+    <div id="avisos"></div>
+    <h2>Lista de materiales</h2>
+    <table id="tabla"></table>
+  </section>
+</main>
+<script src="datos/catalogo-ejemplo.js"></script>
+<script src="js/motor/expresiones.js"></script>
+<script src="js/motor/geometria.js"></script>
+<script src="js/motor/materiales.js"></script>
+<script src="js/motor/precios.js"></script>
+<script src="js/motor/avisos.js"></script>
+<script src="js/motor/motor.js"></script>
+<script>
+  const cat = window.CATALOGO_EJEMPLO;
+  const $ = (id) => document.getElementById(id);
+  const eur = (n) => (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: 0 }) + ' €';
+  const num = (n, d = 1) => (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: d });
+
+  $('modelo').innerHTML = cat.modelos.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
+  $('zona').innerHTML = cat.obra_local.map(z => `<option>${z.zona}</option>`).join('');
+  function alturas() {
+    const m = cat.modelos.find(x => x.id === $('modelo').value);
+    $('altura').innerHTML = MOTOR.geometria.lista(m.alturas_a_canal_admitidas).map(h => `<option ${h === 4.5 ? 'selected' : ''}>${h}</option>`).join('');
+  }
+
+  function render() {
+    const proyecto = {
+      modelo: $('modelo').value, naves: +$('naves').value, tramos: +$('tramos').value,
+      altura_canal: +$('altura').value, puertas: +$('puertas').value, zona: $('zona').value,
+      seleccion: { ventilacion_cenital: $('cenital').value || null, ventilacion_lateral: $('lateral').value || null },
+      sitio: $('viento').value ? { viento_kmh: +$('viento').value } : undefined
+    };
+    let r;
+    try { r = MOTOR.calcular(cat, proyecto); }
+    catch (e) { $('avisos').innerHTML = `<div class="aviso rojo">${e.message}</div>`; return; }
+    const g = r.geometria, p = r.precio, v = r.ventilacion;
+    $('kpis').innerHTML = [
+      ['Superficie', num(g.area, 0) + ' m²'], ['Largo × ancho', `${num(g.largo)} × ${num(g.ancho_total)} m`],
+      ['Pilares / pórticos', `${g.pilares + g.pilares_hastial} / ${g.porticos}`], ['Acero', `${num(p.kg_acero, 0)} kg · ${num(p.kg_acero_m2, 2)} kg/m²`],
+      ['Ventilación efectiva', `${num(v.pct_total * 100)} % (cenital ${num(v.pct_cenital * 100)} %)`],
+      ['Materiales', eur(p.materiales)], ['Total sin IVA', `${eur(p.base_imponible)} · ${num(p.eur_m2, 2)} €/m²`], ['Total con IVA', eur(p.total)]
+    ].map(([k, val]) => `<div class="kpi"><small>${k}</small><b>${val}</b></div>`).join('');
+    $('avisos').innerHTML = r.avisos.map(a => `<div class="aviso ${a.nivel}">${a.texto}</div>`).join('');
+
+    let html = '<tr><th>Partida</th><th>Cálculo</th><th class="n">Cantidad</th><th class="n">kg</th><th class="n">Precio u.</th><th class="n">Importe</th></tr>';
+    for (const cat_ of Object.keys(p.categorias)) {
+      html += `<tr class="cat"><td colspan="5">${cat_}</td><td class="n">${eur(p.categorias[cat_])}</td></tr>`;
+      for (const l of r.lineas.filter(x => x.categoria === cat_)) {
+        const cant = l.traza.regla === 'porcentaje' ? num(l.cantidad * 100, 0) + ' %' : `${num(l.cantidad)} ${l.unidad}`;
+        html += `<tr><td>${l.nombre}${l.origen === 'estimado' ? ' <span class="est">estimado</span>' : ''}</td>
+          <td class="traza">${l.traza.calculo || ''}</td><td class="n">${cant}</td><td class="n">${l.kg ? num(l.kg, 0) : ''}</td>
+          <td class="n">${l.traza.regla === 'porcentaje' ? '' : num(l.precio_unitario, 2)}</td><td class="n">${l.importe == null ? '—' : eur(l.importe)}</td></tr>`;
+      }
+    }
+    if (p.obra) {
+      html += `<tr class="cat"><td colspan="5">Obra local · ${p.obra.zona}</td><td class="n">${eur(p.obra.total)}</td></tr>
+        <tr><td>Movilización</td><td></td><td></td><td></td><td></td><td class="n">${eur(p.obra.movilizacion)}</td></tr>
+        <tr><td>Montaje</td><td class="traza">${num(g.area, 0)} m²</td><td></td><td></td><td></td><td class="n">${eur(p.obra.montaje)}</td></tr>
+        <tr><td>Hoyos y dados</td><td class="traza">${g.pilares + g.pilares_hastial} pilares</td><td></td><td></td><td></td><td class="n">${eur(p.obra.hoyos)}</td></tr>`;
+    }
+    html += `<tr class="tot"><td colspan="5">Base imponible</td><td class="n">${eur(p.base_imponible)}</td></tr>
+      <tr><td colspan="5">IVA ${num(p.iva_pct * 100, 0)} %</td><td class="n">${eur(p.iva)}</td></tr>
+      <tr class="tot"><td colspan="5">Total</td><td class="n">${eur(p.total)}</td></tr>`;
+    $('tabla').innerHTML = html;
+  }
+
+  alturas();
+  $('modelo').addEventListener('change', () => { alturas(); render(); });
+  document.querySelectorAll('input, select').forEach(el => el.addEventListener('input', render));
+  render();
+</script>
+</body>
+</html>
