@@ -9,7 +9,7 @@
 <body>
   <header>
     <h1>Configurador de Invernaderos</h1>
-    <div class="subtitle">Dise&ntilde;o, visualizaci&oacute;n y propuesta comercial &mdash; MVP v0.3 estructural</div>
+    <div class="subtitle">Dise&ntilde;o, lista de materiales y propuesta comercial &mdash; v0.4 (motor de c&aacute;lculo con cat&aacute;logo)</div>
   </header>
 
   <main class="layout">
@@ -21,14 +21,49 @@
       </div>
       <p class="hint" id="model-description"></p>
 
-      <h2>Dimensiones</h2>
+      <h2>Geometr&iacute;a</h2>
+      <div class="field-row">
+        <div class="field">
+          <label>N.&ordm; de naves</label>
+          <input type="number" id="num-naves" min="1" max="30" value="3">
+        </div>
+        <div class="field">
+          <label>Ancho de nave</label>
+          <select id="ancho-nave"></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Tramos entre p&oacute;rticos</label>
+          <input type="number" id="num-tramos" min="1" max="100" value="11">
+        </div>
+        <div class="field">
+          <label>Separaci&oacute;n</label>
+          <select id="separacion"></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Altura a canal</label>
+          <select id="altura-canal"></select>
+        </div>
+        <div class="field">
+          <label>Puertas</label>
+          <input type="number" id="puertas" min="0" max="20" value="1">
+        </div>
+      </div>
+
+      <h2>Envolvente</h2>
+      <div id="opciones"></div>
+
+      <h2>Emplazamiento</h2>
       <div class="field">
-        <label>N.&ordm; de naves (ancho)</label>
-        <input type="number" id="num-naves" min="1" max="20" value="2">
+        <label>Zona (obra local)</label>
+        <select id="zona"></select>
       </div>
       <div class="field">
-        <label>N.&ordm; de tramos entre pilares (largo)</label>
-        <input type="number" id="num-tramos" min="1" max="100" value="20">
+        <label>Viento de dise&ntilde;o del sitio (km/h)</label>
+        <input type="number" id="viento" min="0" placeholder="Opcional: compara con el declarado">
       </div>
 
       <h2>Proyecto</h2>
@@ -44,9 +79,6 @@
         <label>Ubicaci&oacute;n</label>
         <input type="text" id="ubicacion" placeholder="Localidad, provincia">
       </div>
-
-      <h2>Opciones</h2>
-      <div id="opciones"></div>
 
       <button id="btn-propuesta" class="btn-primary">📄 Generar propuesta comercial</button>
     </aside>
@@ -67,16 +99,16 @@
         <svg id="plan" viewBox="0 0 900 520"></svg>
       </div>
 
-      <!-- Resumen + precio -->
+      <!-- Resumen, avisos y precio -->
       <div class="summary-box" id="summary"></div>
 
-      <!-- Especificaciones técnicas -->
-      <div class="specs-box" id="especificaciones"></div>
+      <!-- Lista de materiales con «ver cálculo» -->
+      <div class="specs-box" id="materiales"></div>
     </section>
   </main>
 
   <footer>
-    Prototipo MVP v0.3 estructural &mdash; datos placeholder. Sustituir por cat&aacute;logo real de f&aacute;brica antes de uso comercial.
+    v0.4 en desarrollo &mdash; cat&aacute;logo de ejemplo con valores estimados. Cada distribuidor carga el suyo antes de uso comercial.
   </footer>
 
   <!-- ============ MODO PROPUESTA (overlay imprimible) ============ -->
@@ -89,9 +121,13 @@
     <div id="propuesta-container"></div>
   </div>
 
-  <script src="js/modelos.js"></script>
-  <script src="js/opciones.js"></script>
-  <script src="js/calculos.js"></script>
+  <script src="datos/catalogo-ejemplo.js"></script>
+  <script src="js/motor/expresiones.js"></script>
+  <script src="js/motor/geometria.js"></script>
+  <script src="js/motor/materiales.js"></script>
+  <script src="js/motor/precios.js"></script>
+  <script src="js/motor/avisos.js"></script>
+  <script src="js/motor/motor.js"></script>
   <script src="js/planos.js"></script>
   <script src="js/propuesta.js"></script>
   <script src="js/app.js"></script>

@@ -12,7 +12,7 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 
 | Ruta | Qué es |
 | --- | --- |
-| `index.html`, `styles.css`, `js/*.js` | App v0.3 original (sigue funcionando; aún no usa el motor nuevo) |
+| `index.html`, `styles.css`, `js/app.js`, `js/planos.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**: carga `datos/catalogo-ejemplo.js` y llama a `MOTOR.calcular` |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
 | `motor.html` | Página de prueba del motor con el catálogo de ejemplo (doble clic) |
 | `datos/Catalogo_Plantilla_v0.4.xlsx` | Plantilla del catálogo, rellena con un **ejemplo de valores estimados** |
@@ -30,7 +30,7 @@ python3 tests/referencia.py
 node tests/pruebas.js        # debe terminar con "0 fallos"
 ```
 
-Y abrir `motor.html` en el navegador.
+Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
 
 ## Uso del motor
 
@@ -47,7 +47,7 @@ const r = MOTOR.calcular(catalogo, {
 ## Siguientes pasos (en orden)
 
 1. **Fase 1 — importador en el navegador:** leer la plantilla `.xlsx` con una librería local en `lib/` (p. ej. SheetJS copiado, sin CDN) y validar referencias, reglas y precios antes de aceptar el catálogo.
-2. **Conectar el motor a la interfaz** de la v0.3: sustituir `calculos.js` (precio = superficie × €/m²) por `MOTOR.calcular`, y mostrar la lista de materiales con «ver cálculo».
+2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo. Pendiente: que la interfaz use el catálogo importado (paso 1) en vez del de ejemplo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación.
 

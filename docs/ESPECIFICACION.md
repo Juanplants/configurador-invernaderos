@@ -85,7 +85,7 @@ Nivel A (balances simples: renovaciones/hora, potencia de calefacción, efecto d
 | 2. Motor | **Hecho** (`js/motor/`, `tests/`) | Coincide con la referencia independiente y con 63 pilares / 42 cerchas de la v0.3 |
 | 3. Calibración | Espera listas de materiales de fábrica | Acero total ≤ 5 % de desviación frente al fabricante |
 | 4. Planos | Pendiente | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
-| 5. Interfaz y salidas | Pendiente | Proyecto completo sin tocar código |
+| 5. Interfaz y salidas | En curso: interfaz conectada al motor y al catálogo; faltan pasos de emplazamiento/terreno, exportaciones Excel/JSON | Proyecto completo sin tocar código |
 | 6. Terreno | Pendiente | 3 opciones coherentes con una parcela real |
 
 ## 10. Decisiones abiertas / datos a pedir a fabricantes

@@ -1,61 +1,79 @@
 // ============================================================
 // Generación de la propuesta comercial (HTML imprimible a PDF)
 // ============================================================
-// Versión estructural pura. Numeración de capítulos coherente
-// con el índice. Título y familia se ajustan al modelo elegido.
+// Todo sale del catálogo (empresa, modelo, textos de cada partida) y
+// del resultado del motor. Los valores con origen «estimado» llevan
+// asterisco: la propuesta nunca los presenta como dato del fabricante.
+// La traza del cálculo no se incluye (solo la ve el distribuidor).
 
 const PROPUESTA = {
 
-  generar(state, modelo, calc, precio, planos) {
-    const fecha = new Date().toLocaleDateString('es-ES');
-    const codigo = state.codigoProyecto || 'PROP-' + new Date().toISOString().slice(0,10).replace(/-/g,'');
-    const cliente = state.cliente || 'Cliente no especificado';
-    const ubicacion = state.ubicacion || '—';
-    const familiaNombre = this._familiaNombre(modelo);
-
-    const html = `
+  generar({ state, catalogo, r, perfiles, planos }) {
+    const emp = catalogo.empresa || {};
+    const modelo = catalogo.modelos.find(m => m.id === r.modelo.id);
+    const ctx = {
+      state, emp, modelo, r, perfiles,
+      g: r.geometria,
+      fecha: new Date().toLocaleDateString('es-ES'),
+      codigo: state.codigoProyecto || 'PROP-' + new Date().toISOString().slice(0, 10).replace(/-/g, ''),
+      cliente: state.cliente || 'Cliente no especificado',
+      ubicacion: state.ubicacion || '—',
+      categorias: Object.keys(r.precio.categorias)
+    };
+    return `
       <div class="propuesta">
-        ${this._portada(codigo, cliente, ubicacion, fecha, familiaNombre)}
-        ${this._indice()}
-        ${this._antecedentes(modelo, calc, cliente, ubicacion)}
-        ${this._dimensiones(state, modelo, calc)}
+        ${this._portada(ctx)}
+        ${this._indice(ctx)}
+        ${this._antecedentes(ctx)}
+        ${this._dimensiones(ctx)}
         ${this._planos(planos)}
-        ${this._normativa(modelo)}
-        ${this._estructura(modelo)}
-        ${this._recubrimiento(modelo)}
-        ${this._especificaciones()}
-        ${this._precios(calc, precio)}
-        ${this._condiciones()}
-        ${this._garantia()}
+        ${this._cargas(ctx)}
+        ${this._capitulos(ctx)}
+        ${this._precios(ctx)}
+        ${this._condiciones(ctx)}
+        ${this._garantia(ctx)}
       </div>
     `;
-    return html;
   },
 
-  _familiaNombre(modelo) {
-    const map = {
-      'multitunel': 'MULTITÚNEL',
-      'venlo': 'VENLO',
-      'parral': 'PARRAL'
-    };
-    return map[modelo.familia] || 'INVERNADERO';
+  // ---------- Utilidades ----------
+  _esc(s) {
+    return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  },
+  _num(n, d = 2) { return (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: d }); },
+  _eur(n) { return (n ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; },
+  _est(origen) { return origen === 'estimado' ? '<sup class="est-marca">*</sup>' : ''; },
+  _lista(texto) {
+    return String(texto || '').split(/[;,]/).map(s => s.trim()).filter(Boolean);
+  },
+  _familia(modelo) {
+    return { multitunel: 'MULTITÚNEL', venlo: 'VENLO' }[modelo.familia] || '';
+  },
+  _hayEstimados({ r, modelo }) {
+    return modelo.origen === 'estimado' || r.lineas.some(l => l.origen === 'estimado')
+      || (r.precio.obra && r.precio.obra.origen === 'estimado');
+  },
+  _notaEstimados(ctx) {
+    return this._hayEstimados(ctx)
+      ? '<p class="nota">* Valor estimado, pendiente de confirmación por el fabricante.</p>'
+      : '';
   },
 
   // ---------- Secciones ----------
-  _portada(codigo, cliente, ubicacion, fecha, familiaNombre) {
+  _portada({ emp, modelo, codigo, cliente, ubicacion, fecha }) {
     return `
       <section class="page portada">
-        <div class="logo-top">CONFIGURADOR INVERNADEROS</div>
+        <div class="logo-top">${this._esc(emp.nombre || 'CONFIGURADOR INVERNADEROS')}</div>
         <div class="meta">
-          <div><strong>${codigo}</strong></div>
+          <div><strong>${this._esc(codigo)}</strong></div>
           <div>Ed: 00</div>
-          <div>${cliente}</div>
-          <div>${ubicacion}</div>
+          <div>${this._esc(cliente)}</div>
+          <div>${this._esc(ubicacion)}</div>
           <div>${fecha}</div>
         </div>
         <div class="titulo">
-          <h1>PRESUPUESTO DE INVERNADERO ${familiaNombre}</h1>
-          <h2>Descripción Técnica</h2>
+          <h1>PRESUPUESTO DE INVERNADERO ${this._familia(modelo)}</h1>
+          <h2>${this._esc(modelo.nombre)} · Descripción técnica</h2>
         </div>
         <div class="disclaimer-portada">
           Las imágenes y planos no son contractuales
@@ -64,24 +82,22 @@ const PROPUESTA = {
     `;
   },
 
-  _indice() {
+  _indice({ categorias }) {
     return `
       <section class="page">
         <h2>ÍNDICE</h2>
         <ol class="indice">
-          <li>ESTRUCTURA Y RECUBRIMIENTO
+          <li>DESCRIPCIÓN DEL INVERNADERO
             <ol>
               <li>Antecedentes del proyecto</li>
               <li>Dimensiones del invernadero</li>
               <li>Planos del proyecto (planta, alzados y sección)</li>
-              <li>Normativa aplicable y cargas de cálculo</li>
-              <li>Cimentación</li>
-              <li>Pilares, canal y cerchas</li>
-              <li>Recubrimiento</li>
-              <li>Ventilación cenital</li>
+              <li>Cargas de cálculo y emplazamiento</li>
             </ol>
           </li>
-          <li>ESPECIFICACIONES TÉCNICAS RESUMIDAS</li>
+          <li>COMPOSICIÓN
+            <ol>${categorias.map(c => `<li>${this._esc(c)}</li>`).join('')}</ol>
+          </li>
           <li>PRECIOS</li>
           <li>OTRAS CONDICIONES</li>
           <li>GARANTÍAS</li>
@@ -90,39 +106,41 @@ const PROPUESTA = {
     `;
   },
 
-  _antecedentes(modelo, calc, cliente, ubicacion) {
+  _antecedentes({ modelo, g, cliente, ubicacion }) {
     return `
       <section class="page">
-        <h2>1. ESTRUCTURA Y RECUBRIMIENTO</h2>
+        <h2>1. DESCRIPCIÓN DEL INVERNADERO</h2>
         <h3>1.1 Antecedentes del proyecto</h3>
         <p>
-          A petición de <strong>${cliente}</strong>, ubicado en <strong>${ubicacion}</strong>,
+          A petición de <strong>${this._esc(cliente)}</strong>, ubicado en <strong>${this._esc(ubicacion)}</strong>,
           se presenta la siguiente propuesta técnica y económica para la instalación de un
-          invernadero <strong>${modelo.nombre.toLowerCase()}</strong> con una superficie total
-          de <strong>${calc.area.toFixed(0)} m²</strong>.
+          invernadero <strong>${this._esc(modelo.nombre.toLowerCase())}</strong> con una superficie total
+          de <strong>${this._num(g.area, 0)} m²</strong>.
         </p>
-        <p>${modelo.descripcion}</p>
+        ${modelo.descripcion ? `<p>${this._esc(modelo.descripcion)}</p>` : ''}
       </section>
     `;
   },
 
-  _dimensiones(state, modelo, calc) {
+  _dimensiones({ g, r }) {
+    const v = r.ventilacion;
     return `
       <section>
         <h3>1.2 Dimensiones del invernadero</h3>
         <table class="tabla">
           <tr><th>Parámetro</th><th>Valor</th></tr>
-          <tr><td>Ancho máx.</td><td>${calc.ancho.toFixed(2)} m</td></tr>
-          <tr><td>Largo máx.</td><td>${calc.largo.toFixed(2)} m</td></tr>
-          <tr><td>Nº de capillas</td><td>${state.numNaves}</td></tr>
-          <tr><td>Ancho de capilla</td><td>${modelo.ancho_nave.toFixed(2)} m</td></tr>
-          <tr><td>Altura a canal</td><td>${modelo.alto_canal.toFixed(2)} m</td></tr>
-          <tr><td>Altura cumbrera máx.</td><td>${modelo.alto_cumbrera.toFixed(2)} m</td></tr>
-          <tr><td>Separación entre pilares</td><td>${modelo.separacion_pilares.toFixed(2)} m</td></tr>
-          <tr><td>Separación entre cerchas</td><td>${modelo.separacion_pilares.toFixed(2)} m</td></tr>
-          <tr><td>Nº de pilares</td><td>${calc.numPilares}</td></tr>
-          <tr><td>Nº de cerchas</td><td>${calc.numCerchas}</td></tr>
-          <tr class="total"><td>Superficie total invernadero</td><td>${calc.area.toFixed(2)} m²</td></tr>
+          <tr><td>Ancho total</td><td>${this._num(g.ancho_total)} m</td></tr>
+          <tr><td>Largo total</td><td>${this._num(g.largo)} m</td></tr>
+          <tr><td>Nº de naves</td><td>${g.naves}</td></tr>
+          <tr><td>Ancho de nave</td><td>${this._num(g.ancho_nave)} m</td></tr>
+          <tr><td>Altura a canal</td><td>${this._num(g.altura_canal)} m</td></tr>
+          <tr><td>Altura a cumbrera</td><td>${this._num(g.altura_cumbrera)} m</td></tr>
+          <tr><td>Separación entre pórticos</td><td>${this._num(g.sep_porticos)} m</td></tr>
+          <tr><td>Nº de pórticos</td><td>${g.porticos}</td></tr>
+          <tr><td>Nº de pilares (incl. hastiales)</td><td>${g.pilares + g.pilares_hastial}</td></tr>
+          <tr><td>Volumen interior</td><td>${this._num(g.volumen, 0)} m³</td></tr>
+          <tr><td>Ventilación efectiva (con malla)</td><td>${this._num(v.pct_total * 100, 1)} % del suelo · cenital ${this._num(v.pct_cenital * 100, 1)} %</td></tr>
+          <tr class="total"><td>Superficie total invernadero</td><td>${this._num(g.area)} m²</td></tr>
         </table>
       </section>
     `;
@@ -144,8 +162,8 @@ const PROPUESTA = {
         <p>
           A continuación se incluyen los planos del invernadero con las cuatro
           vistas principales: planta general, alzado frontal, alzado lateral y
-          sección transversal con detalle de una cercha. Todas las cotas están
-          expresadas en metros. Las vistas son orientativas y no contractuales.
+          sección transversal. Todas las cotas están expresadas en metros.
+          Las vistas son orientativas y no contractuales.
         </p>
         <h4>Planta general</h4>
         <div class="plano-wrap">
@@ -154,148 +172,114 @@ const PROPUESTA = {
       </section>
       ${pagina('Alzado frontal', planos.alzadoFrontal)}
       ${pagina('Alzado lateral', planos.alzadoLateral)}
-      ${pagina('Sección transversal — detalle de cercha', planos.seccion)}
+      ${pagina('Sección transversal', planos.seccion)}
     `;
   },
 
-  _normativa(modelo) {
-    const s = modelo.specs;
-    return `
-      <section>
-        <h3>1.4 Normativa aplicable y cargas de cálculo</h3>
-        <ul>${s.normativa.map(n => `<li>${n}</li>`).join('')}</ul>
-        <h4>Cargas consideradas</h4>
-        <table class="tabla">
-          <tr><td>Viento (10 min a 10 m)</td><td>${s.cargas.viento_medio}</td></tr>
-          <tr><td>Viento máx. con plásticos y ventanas cerradas</td><td>${s.cargas.viento_max_cerrado}</td></tr>
-          <tr><td>Viento máx. sin plásticos</td><td>${s.cargas.viento_max_abierto}</td></tr>
-          <tr><td>Cultivo</td><td>${s.cargas.cultivo}</td></tr>
-          <tr><td>Equipamiento</td><td>${s.cargas.equipamiento}</td></tr>
-          <tr><td>Nieve</td><td>${s.cargas.nieve}</td></tr>
-        </table>
-        <h3>1.5 Cimentación</h3>
-        <table class="tabla">
-          <tr><td>Resistencia del terreno</td><td>${s.cimentacion.resistencia_terreno}</td></tr>
-          <tr><td>Ángulo de fricción del suelo</td><td>${s.cimentacion.angulo_frotamiento}</td></tr>
-          <tr><td>Compactación</td><td>${s.cimentacion.compactacion}</td></tr>
-        </table>
-      </section>
-    `;
-  },
-
-  _estructura(modelo) {
-    const s = modelo.specs;
+  _cargas(ctx) {
+    const { modelo, r, state } = ctx;
+    const e = r.emplazamiento;
+    const m = this._est(modelo.origen);
+    const fila = (txt, val, ud) => (val === undefined || val === null || val === '')
+      ? '' : `<tr><td>${txt}</td><td>${this._num(val, 1)} ${ud}${m}</td></tr>`;
+    const textoApto = {
+      apto: 'Apto',
+      al_limite: 'Al límite de las cargas declaradas',
+      no_apto: 'No apto: requiere cálculo estructural específico'
+    };
     return `
       <section class="page">
-        <h3>1.6 Pilares, canal y cerchas</h3>
+        <h3>1.4 Cargas de cálculo y emplazamiento</h3>
+        <h4>Cargas declaradas del modelo</h4>
         <table class="tabla">
-          <tr><th colspan="2">PILARES</th></tr>
-          <tr><td>Sección</td><td>${s.pilares.seccion}</td></tr>
-          <tr><td>Espesor</td><td>${s.pilares.espesor}</td></tr>
-          <tr><td>Protección</td><td>${s.pilares.proteccion}</td></tr>
-
-          <tr><th colspan="2">CANAL</th></tr>
-          <tr><td>Tipo</td><td>${s.canal.tipo}</td></tr>
-          <tr><td>Desarrollo</td><td>${s.canal.desarrollo}</td></tr>
-          <tr><td>Espesor</td><td>${s.canal.espesor}</td></tr>
-          <tr><td>Galvanizado</td><td>${s.canal.galvanizado}</td></tr>
-
-          <tr><th colspan="2">CERCHAS</th></tr>
-          <tr><td>Forma</td><td>${s.cerchas.forma}</td></tr>
-          <tr><td>Cumbrera</td><td>${s.cerchas.cumbrera}</td></tr>
-          <tr><td>Arco</td><td>${s.cerchas.arco}</td></tr>
-          <tr><td>Barra de cultivo</td><td>${s.cerchas.barra_cultivo}</td></tr>
-          <tr><td>Tirantes</td><td>${s.cerchas.tirantes}</td></tr>
+          ${fila('Viento máx. con cerramiento y ventanas cerradas', modelo.viento_cerrado, 'km/h')}
+          ${fila('Viento máx. con ventanas abiertas', modelo.viento_abierto, 'km/h')}
+          ${fila('Nieve', modelo.nieve, 'kg/m²')}
+          ${fila('Cultivo colgado', modelo.cultivo_colgado, 'kg/m²')}
+          ${fila('Equipamiento', modelo.equipamiento, 'kg/m²')}
         </table>
-
-        <h3>1.8 Ventilación cenital</h3>
+        ${e ? `
+        <h4>Comprobación del emplazamiento</h4>
         <table class="tabla">
-          <tr><td>Tipo</td><td>${s.ventilacion.tipo}</td></tr>
-          <tr><td>Brazo</td><td>${s.ventilacion.brazo}</td></tr>
-          <tr><td>Motor</td><td>${s.ventilacion.motor}</td></tr>
+          <tr><td>Viento de diseño del sitio</td><td>${this._num(state.viento_kmh, 0)} km/h</td></tr>
+          <tr><td>Resultado</td><td><strong>${textoApto[e.resultado]}</strong></td></tr>
         </table>
+        <p class="nota">Comparación de cargas del sitio con las declaradas por el modelo; no sustituye al cálculo estructural.</p>
+        ` : ''}
+        ${this._notaEstimados(ctx)}
       </section>
     `;
   },
 
-  _recubrimiento(modelo) {
-    const r = modelo.specs.recubrimiento;
-    return `
-      <section>
-        <h3>1.7 Recubrimiento</h3>
+  _capitulos(ctx) {
+    const { r, perfiles, categorias } = ctx;
+    const perfil = id => perfiles.find(p => p.id === id);
+    const cantidad = l => {
+      if (l.traza.regla === 'porcentaje') return 'incluido';
+      if (l.metros !== undefined) return `${this._num(l.kg, 0)} kg`;
+      return `${this._num(l.cantidad, l.unidad === 'ud' ? 0 : 1)} ${this._esc(l.unidad)}`;
+    };
+    const capitulos = categorias.map((cat, i) => {
+      const filas = r.lineas.filter(l => l.categoria === cat).map(l => {
+        const p = perfil(l.ref);
+        const detalle = p
+          ? `<br><small>Perfil ${this._esc(p.medidas)}${p.espesor ? ' × ' + this._num(p.espesor, 2) + ' mm' : ''}${p.grado_acero ? ', acero ' + this._esc(p.grado_acero) : ''}${this._est(p.origen)}</small>`
+          : '';
+        return `<tr><td>${this._esc(l.texto || l.nombre)}${detalle}</td><td class="num">${cantidad(l)}${this._est(l.origen)}</td></tr>`;
+      }).join('');
+      return `
+        <h3>2.${i + 1} ${this._esc(cat)}</h3>
         <table class="tabla">
-          <tr><td>Tipo de techo</td><td>${r.techo}</td></tr>
-          <tr><td>Plástico / material</td><td>${r.plastico}</td></tr>
-          <tr><td>Transmisión de luz</td><td>${r.transmision_luz}</td></tr>
-          <tr><td>Eficiencia térmica</td><td>${r.eficiencia_termica}</td></tr>
-        </table>
-      </section>
-    `;
-  },
-
-  _especificaciones() {
+          <tr><th>Descripción</th><th class="num">Cantidad</th></tr>
+          ${filas}
+        </table>`;
+    }).join('');
     return `
       <section class="page">
-        <h2>2. ESPECIFICACIONES TÉCNICAS RESUMIDAS</h2>
-        <p>Las especificaciones cumplen con la normativa europea vigente:</p>
-        <ul>
-          <li>Acero estructural <strong>S275JR / S235JR</strong> según UNE-EN 10025-1:2006.</li>
-          <li>Galvanizado en caliente según UNE-EN ISO 1461:2010.</li>
-          <li>Tornillería con recubrimiento Zinc + Níquel.</li>
-          <li>Diseño estructural calculado con software de cálculo de estructuras metálicas.</li>
-          <li>Plástico de cubierta con garantía según ficha técnica del fabricante.</li>
-        </ul>
+        <h2>2. COMPOSICIÓN</h2>
+        ${capitulos}
+        <p><strong>Acero total:</strong> ${this._num(r.precio.kg_acero, 0)} kg (${this._num(r.precio.kg_acero_m2, 2)} kg/m²).</p>
+        ${this._notaEstimados(ctx)}
       </section>
     `;
   },
 
-  _precios(calc, precio) {
-    const fmt = n => n.toLocaleString('es-ES', { maximumFractionDigits: 2 }) + ' €';
-    const subtotales = precio.subtotalesCategoria;
-    let html = `
+  _precios(ctx) {
+    const { r, g } = ctx;
+    const p = r.precio;
+    const filas = Object.entries(p.categorias)
+      .map(([cat, imp]) => `<tr><td>${this._esc(cat)}</td><td class="num">${this._eur(imp)}</td></tr>`).join('');
+    const obra = p.obra
+      ? `<tr><td>Montaje y obra local (${this._esc(p.obra.zona)})${this._est(p.obra.origen)}</td><td class="num">${this._eur(p.obra.total)}</td></tr>`
+      : '';
+    return `
       <section class="page">
         <h2>3. PRECIOS</h2>
-        <p><strong>Superficie total:</strong> ${calc.area.toFixed(2)} m²</p>
+        <p><strong>Superficie total:</strong> ${this._num(g.area)} m²</p>
         <table class="tabla precios">
-          <tr><th>Descripción</th><th class="num">Importe (EUR)</th></tr>
-    `;
-    for (const [cat, importe] of Object.entries(subtotales)) {
-      html += `<tr><td>${cat}</td><td class="num">${fmt(importe)}</td></tr>`;
-    }
-    html += `
-          <tr class="subtotal"><td>SUBTOTAL</td><td class="num">${fmt(precio.total)}</td></tr>
-          <tr class="iva"><td>IVA 21 %</td><td class="num">${fmt(precio.total * 0.21)}</td></tr>
-          <tr class="total"><td>TOTAL PRESUPUESTO (IVA incluido)</td><td class="num">${fmt(precio.total * 1.21)}</td></tr>
+          <tr><th>Descripción</th><th class="num">Importe (${this._esc(p.moneda)})</th></tr>
+          ${filas}
+          ${obra}
+          <tr class="subtotal"><td>BASE IMPONIBLE</td><td class="num">${this._eur(p.base_imponible)}</td></tr>
+          <tr class="iva"><td>IVA ${this._num(p.iva_pct * 100, 0)} %</td><td class="num">${this._eur(p.iva)}</td></tr>
+          <tr class="total"><td>TOTAL PRESUPUESTO (IVA incluido)</td><td class="num">${this._eur(p.total)}</td></tr>
         </table>
-        <p class="nota">
-          Importes sujetos a confirmación según datos definitivos de fábrica y condiciones del terreno.
-        </p>
+        <p>Precio medio sin IVA: <strong>${this._num(p.eur_m2, 2)} €/m²</strong>.</p>
+        ${p.obra ? '' : '<p class="nota">No incluye montaje ni obra local.</p>'}
+        <p class="nota">Importes sujetos a confirmación según datos definitivos de fábrica y condiciones del terreno.</p>
+        ${this._notaEstimados(ctx)}
       </section>
     `;
-    return html;
   },
 
-  _condiciones() {
+  _condiciones({ emp }) {
+    const noIncluido = this._lista(emp.no_incluido);
     return `
       <section class="page">
         <h2>4. OTRAS CONDICIONES</h2>
-        <h3>4.1 Transporte</h3>
-        <p>CIF puerto de destino en España o franco fábrica, según Incoterm pactado.</p>
-        <h3>4.2 Plazo de entrega</h3>
-        <p>10-12 semanas desde confirmación de pedido y recepción del 30 % de anticipo.</p>
-        <h3>4.3 Forma de pago</h3>
-        <ul>
-          <li><strong>Materiales:</strong> 30 % a la firma del contrato, 70 % una semana antes de cada carga.</li>
-          <li><strong>Mano de obra:</strong> 30 % a la firma, 70 % mediante certificaciones parciales cada 15 días.</li>
-        </ul>
-        <h3>4.4 No incluido</h3>
-        <ul>
-          <li>Obra civil.</li>
-          <li>Permisos, licencias, proyecto o legalizaciones.</li>
-          <li>Acometidas eléctricas, hidráulicas y de gas hasta el invernadero.</li>
-          <li>Tuberías y colectores de bajantes pluviales.</li>
-          <li>Equipamiento interior (climatización, riego, mesas, iluminación, control).</li>
-        </ul>
+        ${emp.plazo_de_entrega ? `<h3>4.1 Plazo de entrega</h3><p>${this._esc(emp.plazo_de_entrega)}</p>` : ''}
+        ${emp.condiciones_de_pago ? `<h3>4.2 Forma de pago</h3><p>${this._esc(emp.condiciones_de_pago)}</p>` : ''}
+        ${noIncluido.length ? `<h3>4.3 No incluido</h3><ul>${noIncluido.map(x => `<li>${this._esc(x)}</li>`).join('')}</ul>` : ''}
         <p class="disclaimer">
           Todas las imágenes y planos incluidos en este documento son orientativos y no contractuales.
         </p>
@@ -303,18 +287,12 @@ const PROPUESTA = {
     `;
   },
 
-  _garantia() {
+  _garantia({ emp, modelo }) {
     return `
       <section class="page">
         <h2>5. GARANTÍAS</h2>
-        <h3>5.1 Estructura</h3>
-        <p>La estructura cuenta con garantía por defectos de fabricación durante 10 años desde la fecha de entrega, sujeta a un montaje correcto y al uso conforme a las cargas de cálculo declaradas.</p>
-        <h3>5.2 Plástico de cubierta</h3>
-        <p>Las láminas se suministran con garantía según la ficha técnica del fabricante
-        (habitualmente 30-48 meses según radiación del emplazamiento).</p>
-        <p>En caso de degradación prematura, la indemnización se aplica conforme a:</p>
-        <p class="formula">D % = (GL − AL) / GL × 100</p>
-        <p>donde GL es el periodo de garantía (meses) y AL la vida útil real al fallar.</p>
+        ${modelo.garantia_estructura ? `<p>Estructura: <strong>${this._num(modelo.garantia_estructura, 0)} años</strong> por defectos de fabricación, sujeta a un montaje correcto y al uso conforme a las cargas declaradas.</p>` : ''}
+        ${emp.garantias ? `<p>${this._esc(emp.garantias)}</p>` : ''}
       </section>
     `;
   }

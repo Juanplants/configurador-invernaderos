@@ -1,171 +1,325 @@
 // ============================================================
 // Configurador de Invernaderos — orquestador principal
 // ============================================================
-// v0.3 estructural: solo geometría, modelos, opciones de cerramiento
-// y propuesta. Equipamiento y agronomía se reincorporarán en una fase
-// posterior.
+// v0.4: la interfaz de la v0.3 conectada al motor de cálculo
+// (js/motor/). Todos los datos de producto salen del catálogo;
+// aquí solo hay estado de la pantalla y pintado.
+
+const CATALOGO = window.CATALOGO_EJEMPLO;
+const lista = MOTOR.geometria.lista;
 
 const state = {
-  modeloId: MODELOS[0].id,
-  numNaves: 2,
-  numTramos: 20,
-  opcionesActivas: new Set([
-    'rec-doble-camara',
-    'vent-cenital-motor',
-    'serv-supervision',
-    'serv-transporte'
-  ]),
+  modelo: CATALOGO.modelos[0].id,
+  naves: 3,
+  tramos: 11,
+  altura_canal: null,   // null = primera admitida por el modelo
+  ancho_nave: null,
+  separacion: null,
+  puertas: 1,
+  seleccion: {},        // grupo de alternativas → id de componente, o null = ninguna
+  opcionales: new Set(),
+  zona: (CATALOGO.obra_local || [])[0]?.zona || '',
+  viento_kmh: '',
   cliente: '',
   ubicacion: '',
   codigoProyecto: '',
-  vistaActual: 'planta'
+  vistaActual: 'planta',
+  verCalculo: false
 };
 
 // ------- Helpers -------
-function getModelo() { return MODELOS.find(m => m.id === state.modeloId); }
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtEuro = n => (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: 0 }) + ' €';
+const fmtNum = (n, d = 1) => (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: d });
+
+function getModelo() { return CATALOGO.modelos.find(m => m.id === state.modelo); }
+
+function componentesDelModelo(modelo) {
+  return CATALOGO.componentes.filter(c =>
+    String(c.modelos || '').split(';').map(s => s.trim()).includes(modelo.id));
+}
+
+// Valor elegido si el modelo lo admite; si no, el primero admitido
+function admitido(valor, admitidos) {
+  const vals = lista(admitidos);
+  return vals.some(v => Math.abs(v - valor) < 1e-6) ? valor : vals[0];
+}
+
+function proyecto() {
+  const modelo = getModelo();
+  return {
+    modelo: modelo.id,
+    naves: state.naves,
+    tramos: state.tramos,
+    altura_canal: admitido(state.altura_canal, modelo.alturas_a_canal_admitidas),
+    ancho_nave: admitido(state.ancho_nave, modelo.anchos_de_nave_admitidos),
+    separacion: admitido(state.separacion, modelo.separaciones_entre_porticos),
+    puertas: state.puertas,
+    seleccion: state.seleccion,
+    opcionales: [...state.opcionales],
+    zona: state.zona || undefined,
+    sitio: state.viento_kmh !== '' ? { viento_kmh: +state.viento_kmh } : undefined
+  };
+}
 
 function calcularTodo() {
   const modelo = getModelo();
-  const calc = CALCULOS.estructura(state, modelo);
-  const precio = CALCULOS.precio(calc.area, modelo, state.opcionesActivas);
-  return { modelo, calc, precio };
+  try {
+    return { modelo, r: MOTOR.calcular(CATALOGO, proyecto()) };
+  } catch (e) {
+    return { modelo, error: e.message };
+  }
 }
 
-const fmtEuro = n => n.toLocaleString('es-ES', { maximumFractionDigits: 0 }) + ' €';
+// Al cambiar de modelo, olvida las elecciones que el nuevo modelo no tiene
+// (el motor usaría «ninguna» en silencio) y vuelve a su alternativa por defecto.
+function depurarSeleccion() {
+  const comps = componentesDelModelo(getModelo());
+  for (const [g, id] of Object.entries(state.seleccion)) {
+    if (id !== null && !comps.some(c => c.id === id && c.grupo_alternativas === g)) delete state.seleccion[g];
+  }
+  for (const id of state.opcionales) {
+    if (!comps.some(c => c.id === id)) state.opcionales.delete(id);
+  }
+}
+
+// Perfiles de acero que usa el proyecto (para rótulos de planos y propuesta)
+function perfilesUsados(r) {
+  const vistos = new Map();
+  for (const l of r.lineas) {
+    const p = (CATALOGO.perfiles || []).find(x => x.id === l.ref);
+    if (p && !vistos.has(p.id)) vistos.set(p.id, p);
+  }
+  return [...vistos.values()];
+}
 
 // ------- Render -------
 function render() {
   const datos = calcularTodo();
   renderConfigPanel(datos);
+  if (datos.error) {
+    document.getElementById('summary').innerHTML = `<div class="aviso rojo">${esc(datos.error)}</div>`;
+    document.getElementById('materiales').innerHTML = '';
+    document.getElementById('plan').innerHTML = '';
+    return;
+  }
   renderSummary(datos);
-  renderEspecificaciones(datos);
+  renderMateriales(datos);
   renderPlano(datos);
+}
+
+function opcionesSelect(valores, actual) {
+  return valores.map(v => `<option value="${v}" ${Math.abs(v - actual) < 1e-6 ? 'selected' : ''}>${fmtNum(v, 2)} m</option>`).join('');
 }
 
 function renderConfigPanel({ modelo }) {
   const modelSelect = document.getElementById('model-select');
   if (modelSelect.options.length === 0) {
-    modelSelect.innerHTML = MODELOS.map(m => `<option value="${m.id}">${m.nombre}</option>`).join('');
+    modelSelect.innerHTML = CATALOGO.modelos.map(m => `<option value="${esc(m.id)}">${esc(m.nombre)}</option>`).join('');
   }
-  modelSelect.value = state.modeloId;
-  document.getElementById('model-description').textContent = modelo.descripcion;
-  document.getElementById('num-naves').value = state.numNaves;
-  document.getElementById('num-tramos').value = state.numTramos;
+  modelSelect.value = state.modelo;
+  document.getElementById('model-description').textContent = modelo.descripcion || '';
+  document.getElementById('num-naves').value = state.naves;
+  document.getElementById('num-tramos').value = state.tramos;
+  document.getElementById('puertas').value = state.puertas;
 
-  const optsContainer = document.getElementById('opciones');
-  if (optsContainer.children.length === 0) {
-    optsContainer.innerHTML = OPCIONES.map(cat => `
-      <div class="cat">
-        <h4>${cat.categoria}</h4>
-        ${cat.items.map(opt => `
-          <label class="opt">
-            <input type="checkbox" data-id="${opt.id}">
-            <span>${opt.nombre}</span>
-            <span class="price">+${opt.precio_m2} €/m²</span>
-          </label>
-        `).join('')}
-      </div>
-    `).join('');
+  const p = proyecto();
+  for (const [id, campo, actual] of [
+    ['ancho-nave', 'anchos_de_nave_admitidos', p.ancho_nave],
+    ['separacion', 'separaciones_entre_porticos', p.separacion],
+    ['altura-canal', 'alturas_a_canal_admitidas', p.altura_canal]
+  ]) {
+    const sel = document.getElementById(id);
+    const vals = lista(modelo[campo]);
+    sel.innerHTML = opcionesSelect(vals, actual);
+    sel.disabled = vals.length < 2;
   }
-  optsContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    cb.checked = state.opcionesActivas.has(cb.dataset.id);
-  });
+
+  const zonaSelect = document.getElementById('zona');
+  if (zonaSelect.options.length === 0) {
+    zonaSelect.innerHTML = (CATALOGO.obra_local || []).map(z => `<option value="${esc(z.zona)}">${esc(z.zona)}</option>`).join('')
+      + '<option value="">Sin obra local (solo materiales)</option>';
+  }
+  zonaSelect.value = state.zona;
+
+  renderEnvolvente(modelo);
 }
 
-function renderSummary({ modelo, calc, precio }) {
+// Nombre común de las alternativas de un grupo ("Ventana cenital una hoja" /
+// "Ventana cenital mariposa" → "Ventana cenital")
+function etiquetaGrupo(comps) {
+  const palabras = comps.map(c => c.nombre.split(' '));
+  const comun = [];
+  for (let i = 0; palabras.every(p => i < p.length - 1 && p[i] === palabras[0][i]); i++) comun.push(palabras[0][i]);
+  return comun.length ? comun.join(' ') : comps.map(c => c.nombre).join(' / ');
+}
+
+// Opciones de envolvente generadas desde el catálogo: una lista por grupo de
+// alternativas (con «Ninguna» si todas son opcionales) y casillas para los
+// opcionales sueltos y los grupos de una sola alternativa opcional.
+function renderEnvolvente(modelo) {
+  const comps = componentesDelModelo(modelo);
+  const { grupos } = MOTOR.materiales.componentesActivos(CATALOGO, modelo, { seleccion: state.seleccion });
+  const porCategoria = new Map();
+  const añadir = (cat, html) => { if (!porCategoria.has(cat)) porCategoria.set(cat, []); porCategoria.get(cat).push(html); };
+  const hechos = new Set();
+
+  for (const c of comps) {
+    const g = c.grupo_alternativas;
+    if (g && !hechos.has(g)) {
+      hechos.add(g);
+      const alternativas = grupos[g];
+      const puedeNinguna = alternativas.every(a => a.tipo === 'opcional');
+      const actual = g in state.seleccion ? state.seleccion[g] : alternativas[0].id;
+      if (alternativas.length === 1 && puedeNinguna) {
+        añadir(c.categoria, `
+          <label class="opt">
+            <input type="checkbox" data-grupo="${esc(g)}" data-id="${esc(c.id)}" ${actual === c.id ? 'checked' : ''}>
+            <span>${esc(c.nombre)}</span>
+          </label>`);
+      } else if (alternativas.length > 1) {
+        const opts = alternativas.map(a => `<option value="${esc(a.id)}" ${actual === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`);
+        if (puedeNinguna) opts.push(`<option value="" ${actual === null ? 'selected' : ''}>Ninguna</option>`);
+        añadir(c.categoria, `
+          <div class="field">
+            <label>${esc(etiquetaGrupo(alternativas))}</label>
+            <select data-grupo="${esc(g)}">${opts.join('')}</select>
+          </div>`);
+      }
+    } else if (!g && c.tipo === 'opcional') {
+      añadir(c.categoria, `
+        <label class="opt">
+          <input type="checkbox" data-opcional="${esc(c.id)}" ${state.opcionales.has(c.id) ? 'checked' : ''}>
+          <span>${esc(c.nombre)}</span>
+        </label>`);
+    }
+  }
+
+  document.getElementById('opciones').innerHTML = porCategoria.size
+    ? [...porCategoria].map(([cat, items]) => `<div class="cat"><h4>${esc(cat)}</h4>${items.join('')}</div>`).join('')
+    : '<p class="hint">El catálogo no tiene opciones para este modelo.</p>';
+}
+
+function renderSummary({ modelo, r }) {
+  const g = r.geometria, p = r.precio, v = r.ventilacion, e = r.emplazamiento;
+  const cell = (label, value) => `<div class="cell"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+  const textoApto = { apto: 'Apto', al_limite: 'Al límite', no_apto: 'No apto — requiere cálculo' };
+  const estimados = r.lineas.filter(l => l.origen === 'estimado').length;
+  const emp = CATALOGO.empresa || {};
+
   document.getElementById('summary').innerHTML = `
     <h3>Resumen del proyecto</h3>
     <div class="summary-grid">
-      <div class="cell">
-        <div class="label">Superficie</div>
-        <div class="value">${calc.area.toFixed(0)} m²</div>
-      </div>
-      <div class="cell">
-        <div class="label">Largo × Ancho</div>
-        <div class="value">${calc.largo.toFixed(1)} × ${calc.ancho.toFixed(1)}</div>
-      </div>
-      <div class="cell">
-        <div class="label">Volumen</div>
-        <div class="value">${calc.volumen.toFixed(0)} m³</div>
-      </div>
-      <div class="cell">
-        <div class="label">Pilares / Cerchas</div>
-        <div class="value">${calc.numPilares} / ${calc.numCerchas}</div>
-      </div>
+      ${cell('Superficie', `${fmtNum(g.area, 0)} m²`)}
+      ${cell('Largo × Ancho', `${fmtNum(g.largo)} × ${fmtNum(g.ancho_total)} m`)}
+      ${cell('Volumen', `${fmtNum(g.volumen, 0)} m³`)}
+      ${cell('Pilares / cerchas', `${g.pilares + g.pilares_hastial} / ${g.porticos * g.naves}`)}
+      ${cell('Acero', `${fmtNum(p.kg_acero, 0)} kg <small>${fmtNum(p.kg_acero_m2, 2)} kg/m²</small>`)}
+      ${cell('Ventilación efectiva', `${fmtNum(v.pct_total * 100)} % <small>cenital ${fmtNum(v.pct_cenital * 100)} %</small>`)}
+      ${cell('Precio sin IVA', `${fmtNum(p.eur_m2, 2)} €/m²`)}
+      ${cell('Total IVA incl.', fmtEuro(p.total))}
     </div>
+
+    <div class="avisos">
+      ${r.avisos.map(a => `<div class="aviso ${a.nivel}">${esc(a.texto)}</div>`).join('')}
+    </div>
+
     <table>
-      <tr><td>Modelo</td><td>${modelo.nombre}</td></tr>
-      <tr><td>Ancho de capilla</td><td>${modelo.ancho_nave} m × ${state.numNaves} naves</td></tr>
-      <tr><td>Tramos entre pilares</td><td>${state.numTramos} × ${modelo.separacion_pilares} m</td></tr>
-      <tr><td>Altura canal / cumbrera</td><td>${modelo.alto_canal} m / ${modelo.alto_cumbrera} m</td></tr>
-      <tr><td>Estructura base</td><td>${fmtEuro(calc.area * modelo.precio_base_m2)}</td></tr>
+      <tr><td>Modelo</td><td>${esc(modelo.nombre)}</td></tr>
+      <tr><td>Naves</td><td>${g.naves} × ${fmtNum(g.ancho_nave, 2)} m</td></tr>
+      <tr><td>Tramos entre pórticos</td><td>${g.tramos} × ${fmtNum(g.sep_porticos, 2)} m</td></tr>
+      <tr><td>Altura canal / cumbrera</td><td>${fmtNum(g.altura_canal, 2)} m / ${fmtNum(g.altura_cumbrera, 2)} m</td></tr>
+      <tr><td>Viento declarado (cerrado)</td><td>${modelo.viento_cerrado ?? '—'} km/h</td></tr>
+      ${e ? `<tr><td>Emplazamiento (viento ${fmtNum(state.viento_kmh, 0)} km/h)</td><td class="apto-${e.resultado}">${textoApto[e.resultado]}</td></tr>` : ''}
     </table>
 
     <h4 class="sub">Desglose por categoría</h4>
     <table>
-      ${Object.entries(precio.subtotalesCategoria).map(([cat, imp]) =>
-        `<tr><td>${cat}</td><td>${fmtEuro(imp)}</td></tr>`
+      ${Object.entries(p.categorias).map(([cat, imp]) =>
+        `<tr><td>${esc(cat)}</td><td>${fmtEuro(imp)}</td></tr>`
       ).join('')}
-      <tr class="total"><td>Subtotal</td><td>${fmtEuro(precio.total)}</td></tr>
-      <tr><td>IVA 21 %</td><td>${fmtEuro(precio.total * 0.21)}</td></tr>
-      <tr class="total"><td>Total (IVA incluido)</td><td>${fmtEuro(precio.total * 1.21)}</td></tr>
+      ${p.obra ? `<tr><td>Obra local · ${esc(p.obra.zona)}</td><td>${fmtEuro(p.obra.total)}</td></tr>` : ''}
+      <tr class="total"><td>Base imponible</td><td>${fmtEuro(p.base_imponible)}</td></tr>
+      <tr><td>IVA ${fmtNum(p.iva_pct * 100, 0)} %</td><td>${fmtEuro(p.iva)}</td></tr>
+      <tr class="total"><td>Total (IVA incluido)</td><td>${fmtEuro(p.total)}</td></tr>
     </table>
 
     <div class="disclaimer">
-      ⚠️ <strong>Valores de ejemplo.</strong> Precios y dimensiones placeholder.
-      Ajustar con datos reales de fábrica antes de uso comercial.
+      Catálogo: <strong>${esc(emp.nombre || '—')}</strong>${emp.version_catalogo ? ` · versión ${esc(emp.version_catalogo)}` : ''}${emp.fecha ? ` (${esc(emp.fecha)})` : ''}.
+      ${estimados ? `${estimados} de ${r.lineas.length} partidas usan valores <strong>estimados</strong>, no datos del fabricante.` : ''}
     </div>
   `;
 }
 
-function renderEspecificaciones({ modelo }) {
-  const s = modelo.specs;
-  const container = document.getElementById('especificaciones');
-  container.innerHTML = `
-    <h3>Especificaciones técnicas</h3>
-    <div class="specs-grid">
-      <div>
-        <h5>Estructura</h5>
-        <ul>
-          <li>Pilares: ${s.pilares.seccion} / ${s.pilares.espesor}</li>
-          <li>Canal: ${s.canal.tipo}</li>
-          <li>Cerchas: ${s.cerchas.forma} — ${s.cerchas.arco}</li>
-          <li>Cumbrera: ${s.cerchas.cumbrera}</li>
-        </ul>
-      </div>
-      <div>
-        <h5>Cargas de diseño</h5>
-        <ul>
-          <li>Viento cerrado: ${s.cargas.viento_max_cerrado}</li>
-          <li>Cultivo: ${s.cargas.cultivo}</li>
-          <li>Equipamiento: ${s.cargas.equipamiento}</li>
-          <li>Nieve: ${s.cargas.nieve}</li>
-        </ul>
-      </div>
-      <div>
-        <h5>Cimentación</h5>
-        <ul>
-          <li>Resistencia: ${s.cimentacion.resistencia_terreno}</li>
-          <li>Ángulo fricción: ${s.cimentacion.angulo_frotamiento}</li>
-          <li>Compactación: ${s.cimentacion.compactacion}</li>
-        </ul>
-      </div>
-      <div>
-        <h5>Normativa</h5>
-        <ul>${s.normativa.slice(0, 3).map(n => `<li>${n}</li>`).join('')}</ul>
-      </div>
-    </div>
+function renderMateriales({ r }) {
+  const p = r.precio, g = r.geometria;
+  const ver = state.verCalculo;
+  const col = ver ? 6 : 5;
+  let filas = '';
+  for (const cat of Object.keys(p.categorias)) {
+    filas += `<tr class="cat"><td colspan="${col - 1}">${esc(cat)}</td><td class="n">${fmtEuro(p.categorias[cat])}</td></tr>`;
+    for (const l of r.lineas.filter(x => x.categoria === cat)) {
+      const pct = l.traza.regla === 'porcentaje';
+      const cant = pct ? `${fmtNum(l.cantidad * 100, 0)} %`
+        : l.metros !== undefined ? `${fmtNum(l.metros)} m` // perfiles: metros; los kg van en su columna
+        : `${fmtNum(l.cantidad)} ${esc(l.unidad)}`;
+      filas += `<tr>
+        <td>${esc(l.nombre)}${l.origen === 'estimado' ? ' <span class="est">estimado</span>' : ''}</td>
+        ${ver ? `<td class="traza">${esc(l.traza.calculo || '')}</td>` : ''}
+        <td class="n">${cant}</td>
+        <td class="n">${l.kg ? fmtNum(l.kg, 0) : ''}</td>
+        <td class="n">${pct || l.precio_unitario == null ? '' : fmtNum(l.precio_unitario, 2)}</td>
+        <td class="n">${l.importe == null ? '—' : fmtEuro(l.importe)}</td>
+      </tr>`;
+    }
+  }
+  if (p.obra) {
+    const o = p.obra;
+    filas += `<tr class="cat"><td colspan="${col - 1}">Obra local · ${esc(o.zona)}</td><td class="n">${fmtEuro(o.total)}</td></tr>`;
+    for (const [nombre, calculo, importe] of [
+      ['Movilización', 'por obra', o.movilizacion],
+      ['Montaje', `${fmtNum(g.area, 0)} m²`, o.montaje],
+      ['Hoyos y dados', `${g.pilares + g.pilares_hastial} pilares`, o.hoyos]
+    ]) {
+      filas += `<tr><td>${nombre}${o.origen === 'estimado' ? ' <span class="est">estimado</span>' : ''}</td>
+        ${ver ? `<td class="traza">${calculo}</td>` : ''}<td></td><td></td><td></td><td class="n">${fmtEuro(importe)}</td></tr>`;
+    }
+  }
+  filas += `<tr class="total"><td colspan="${col - 1}">Base imponible</td><td class="n">${fmtEuro(p.base_imponible)}</td></tr>`;
+
+  document.getElementById('materiales').innerHTML = `
+    <h3>Lista de materiales
+      <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
+    </h3>
+    <table class="tabla-materiales">
+      <tr><th>Partida</th>${ver ? '<th>Cálculo</th>' : ''}<th class="n">Cantidad</th><th class="n">kg</th><th class="n">Precio u.</th><th class="n">Importe</th></tr>
+      ${filas}
+    </table>
+    ${ver ? '<p class="hint">El cálculo es solo para el distribuidor: no aparece en la propuesta.</p>' : ''}
   `;
 }
 
-function renderPlano({ modelo, calc }) {
+function generarPlanos(r) {
+  const g = r.geometria;
+  const modelo = getModelo();
+  return {
+    planta:        PLANOS.planta(state, g, modelo),
+    alzadoFrontal: PLANOS.alzadoFrontal(state, g, modelo),
+    alzadoLateral: PLANOS.alzadoLateral(state, g, modelo),
+    seccion:       PLANOS.seccion(state, g, modelo, perfilesUsados(r))
+  };
+}
+
+function renderPlano({ r }) {
+  const g = r.geometria;
+  const modelo = getModelo();
   const svg = document.getElementById('plan');
   let contenido = '';
   switch (state.vistaActual) {
-    case 'planta':         contenido = PLANOS.planta(state, calc, modelo); break;
-    case 'alzado-frontal': contenido = PLANOS.alzadoFrontal(state, calc, modelo); break;
-    case 'alzado-lateral': contenido = PLANOS.alzadoLateral(state, calc, modelo); break;
-    case 'seccion':        contenido = PLANOS.seccion(state, calc, modelo); break;
+    case 'planta':         contenido = PLANOS.planta(state, g, modelo); break;
+    case 'alzado-frontal': contenido = PLANOS.alzadoFrontal(state, g, modelo); break;
+    case 'alzado-lateral': contenido = PLANOS.alzadoLateral(state, g, modelo); break;
+    case 'seccion':        contenido = PLANOS.seccion(state, g, modelo, perfilesUsados(r)); break;
   }
   svg.innerHTML = contenido;
 
@@ -176,14 +330,9 @@ function renderPlano({ modelo, calc }) {
 
 // ------- Propuesta PDF -------
 function abrirPropuesta() {
-  const { modelo, calc, precio } = calcularTodo();
-  const planos = {
-    planta:        PLANOS.planta(state, calc, modelo),
-    alzadoFrontal: PLANOS.alzadoFrontal(state, calc, modelo),
-    alzadoLateral: PLANOS.alzadoLateral(state, calc, modelo),
-    seccion:       PLANOS.seccion(state, calc, modelo)
-  };
-  const html = PROPUESTA.generar(state, modelo, calc, precio, planos);
+  const { r, error } = calcularTodo();
+  if (error) return;
+  const html = PROPUESTA.generar({ state, catalogo: CATALOGO, r, perfiles: perfilesUsados(r), planos: generarPlanos(r) });
   document.getElementById('propuesta-container').innerHTML = html;
   document.body.classList.add('modo-propuesta');
 }
@@ -193,38 +342,49 @@ function cerrarPropuesta() {
 
 // ------- Eventos -------
 function bindEvents() {
-  document.getElementById('model-select').addEventListener('change', e => {
-    state.modeloId = e.target.value;
-    render();
-  });
-  document.getElementById('num-naves').addEventListener('input', e => {
-    state.numNaves = Math.max(1, parseInt(e.target.value, 10) || 1);
-    render();
-  });
-  document.getElementById('num-tramos').addEventListener('input', e => {
-    state.numTramos = Math.max(1, parseInt(e.target.value, 10) || 1);
-    render();
-  });
-  document.getElementById('opciones').addEventListener('change', e => {
-    if (e.target.type === 'checkbox') {
-      const id = e.target.dataset.id;
-      if (e.target.checked) state.opcionesActivas.add(id);
-      else state.opcionesActivas.delete(id);
-      render();
+  const entero = (v, min) => Math.max(min, parseInt(v, 10) || min);
+  const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e.target); render(); });
+
+  on('model-select', 'change', el => { state.modelo = el.value; depurarSeleccion(); });
+  on('num-naves', 'input', el => { state.naves = entero(el.value, 1); });
+  on('num-tramos', 'input', el => { state.tramos = entero(el.value, 1); });
+  on('puertas', 'input', el => { state.puertas = entero(el.value, 0); });
+  on('ancho-nave', 'change', el => { state.ancho_nave = +el.value; });
+  on('separacion', 'change', el => { state.separacion = +el.value; });
+  on('altura-canal', 'change', el => { state.altura_canal = +el.value; });
+  on('zona', 'change', el => { state.zona = el.value; });
+  on('viento', 'input', el => { state.viento_kmh = el.value === '' ? '' : Math.max(0, +el.value || 0); });
+  on('opciones', 'change', el => {
+    if (el.dataset.opcional) {
+      if (el.checked) state.opcionales.add(el.dataset.opcional);
+      else state.opcionales.delete(el.dataset.opcional);
+    } else if (el.dataset.grupo) {
+      state.seleccion[el.dataset.grupo] = el.type === 'checkbox'
+        ? (el.checked ? el.dataset.id : null)
+        : (el.value || null);
     }
   });
+
   for (const id of ['cliente', 'ubicacion', 'codigo-proyecto']) {
     document.getElementById(id).addEventListener('input', e => {
       const key = id === 'codigo-proyecto' ? 'codigoProyecto' : id;
       state[key] = e.target.value;
-      renderPlano(calcularTodo());
+      const datos = calcularTodo();
+      if (!datos.error) renderPlano(datos);
     });
   }
   document.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => {
       state.vistaActual = t.dataset.vista;
-      renderPlano(calcularTodo());
+      const datos = calcularTodo();
+      if (!datos.error) renderPlano(datos);
     });
+  });
+  document.getElementById('materiales').addEventListener('click', e => {
+    if (e.target.id === 'btn-ver-calculo') {
+      state.verCalculo = !state.verCalculo;
+      render();
+    }
   });
   document.getElementById('btn-propuesta').addEventListener('click', abrirPropuesta);
   document.getElementById('btn-cerrar-propuesta').addEventListener('click', cerrarPropuesta);
