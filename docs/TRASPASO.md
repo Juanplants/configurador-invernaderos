@@ -12,7 +12,9 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 
 | Ruta | Qué es |
 | --- | --- |
-| `index.html`, `styles.css`, `js/app.js`, `js/planos.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
+| `index.html`, `styles.css`, `js/app.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
+| `js/planos/hoja.js`, `js/planos/planta.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas; hoja de planta general |
+| `js/planos.js` | Alzados y sección de la v0.3 (pendientes de pasar a hoja A3) |
 | `js/importador.js` | **Importador y validador del catálogo** (fase 1): lee la plantilla `.xlsx` en el navegador |
 | `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5 (ver `lib/LEEME.md`) |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
@@ -23,6 +25,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
 | `tests/importacion.js` | Pruebas del importador (32): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
+| `tests/planos.js` | Pruebas de la planta (25): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, escala normalizada y real |
+| `tests/planos_navegador.js` | En Chromium, cada texto real cabe en su caja estimada (se omite sin Playwright) |
 | `tests/generar_catalogo_con_errores.py` → `tests/datos/Catalogo_con_errores.xlsx` | Plantilla con 6 errores y 3 avisos provocados a propósito |
 | `docs/` | Especificación, este traspaso, README de la v0.3 |
 
@@ -33,6 +37,8 @@ python3 herramientas/catalogo_a_json.py datos/Catalogo_Plantilla_v0.4.xlsx datos
 python3 tests/referencia.py
 node tests/pruebas.js        # debe terminar con "0 fallos"
 node tests/importacion.js    # ídem (si se cambia la plantilla: python3 tests/generar_catalogo_con_errores.py)
+node tests/planos.js
+node tests/planos_navegador.js   # opcional, necesita Playwright
 ```
 
 Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
@@ -60,12 +66,23 @@ Botón **Cargar catálogo** (arriba a la derecha) → elegir la plantilla `.xlsx
 - Aceptado → se usa en lugar del de ejemplo y se guarda en `sessionStorage`: aguanta recargas y se olvida al cerrar la pestaña. «Volver al de ejemplo» lo descarta.
 - La **medida por defecto** de ancho, separación y altura es la primera de su lista en la hoja Modelos: el distribuidor la ordena para poner delante la habitual (el ejemplo usa `4.5;4;5`).
 
+## Planos (fase 4)
+
+Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del cajetín es real; reducidas (pantalla, propuesta en A4) vale la escala gráfica.
+
+- **Zonas:** marco UNE-EN ISO 5457 (20 mm a la izquierda, 10 mm en el resto); cajetín 180 × 50 abajo a la derecha; leyenda y escala gráfica a su izquierda; encima, el dibujo con sus bandas de ejes y cotas.
+- **Escala:** la mayor de la serie ISO 5455 (1:20, 1:50, 1:100, 1:200, 1:500, 1:1000) con la que el dibujo cabe. El largo va en horizontal salvo que en vertical quepa a una escala mayor.
+- **Ejes:** pórticos numerados (1, 2, 3…), líneas de pilares con letras (A, B, C…). Si las burbujas no caben todas, se rotula uno de cada 2, 5 o 10, siempre el primero y el último.
+- **Cotas:** fuera del dibujo; cadena de vanos por dentro y total por fuera. Si el texto de cada vano no cabe entre sus líneas, se agrupan los vanos iguales (`60 × 4,00`).
+- **Registro de cajas** (`HOJA.Registro`): cada texto, burbuja, línea de cota y el contorno del dibujo apuntan su caja; un texto se coloca en la primera posición candidata que no pisa nada. Si un texto obligatorio no cabe, queda en `fallos`. El ancho de los textos se estima con una tabla por carácter holgada; `tests/planos_navegador.js` comprueba en Chromium que el texto real cabe.
+- Hecho: **planta**. Pendiente: alzados, sección, detalles, cimentación, emplazamiento; visor con pestañas por hoja; exportar PDF por hoja. El norte no se dibuja hasta tener la orientación de la parcela (hoja de emplazamiento).
+
 ## Siguientes pasos (en orden)
 
 1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 cuando se pueda descargar de `cdn.sheetjs.com` (instrucciones en `lib/LEEME.md`).
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
-4. **Fase 4 — planos** según el apartado 6 de la especificación.
+4. **Fase 4 — planos** según el apartado 6 de la especificación: planta hecha (ver «Planos»); siguen alzados y sección con la misma hoja y registro.
 
 ## Reglas de trabajo
 
