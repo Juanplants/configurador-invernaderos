@@ -26,6 +26,10 @@ const state = {
   opcionales: new Set(),
   zona: (CATALOGO.obra_local || [])[0]?.zona || '',
   viento_kmh: '',
+  nieve_kgm2: '',
+  // Sitio: municipio (código INE) del que salen viento y nieve (CTE DB SE-AE), salvo
+  // que se escriban a mano; categoría de terreno y pendiente (%)
+  sitio: { municipio: null, categoria: 'II', pendiente: '', viento_manual: false, nieve_manual: false },
   parcela: { largo: '', ancho: '', orientacion: 0, girado: false },
   // Fase 6: parcela del Catastro { anillos, meta, implantacion } o null; retranqueos (m) y perfil del optimizador
   terreno: null,
@@ -124,8 +128,10 @@ function guardarProyecto() {
 // Pone en pantalla un estado leído de archivo (el catálogo no cambia)
 function aplicarEstadoProyecto(e) {
   aplicarCatalogo(CATALOGO, catalogoImportado); // valores por defecto del catálogo actual
+  state.sitio = sitioPorDefecto();
   for (const [k, v] of Object.entries(e)) {
     if (k === 'opcionales') state.opcionales = new Set(v);
+    else if (k === 'sitio') state.sitio = Object.assign(sitioPorDefecto(), v);
     else if (k === 'parcela') state.parcela = Object.assign({ largo: '', ancho: '', orientacion: 0, girado: false }, v);
     else state[k] = v;
   }
@@ -133,7 +139,9 @@ function aplicarEstadoProyecto(e) {
   // Campos de texto que render() no reescribe
   const poner = (id, v) => { document.getElementById(id).value = v ?? ''; };
   poner('cliente', state.cliente); poner('ubicacion', state.ubicacion); poner('codigo-proyecto', state.codigoProyecto);
-  poner('viento', state.viento_kmh);
+  // Proyecto sin municipio (anterior a la tabla): el viento y la nieve son manuales
+  if (!e.sitio) state.sitio.viento_manual = state.sitio.nieve_manual = true;
+  poner('viento', state.viento_kmh); poner('nieve', state.nieve_kgm2); poner('pendiente', state.sitio.pendiente);
   poner('retranqueo', state.retranqueo); poner('camino', state.camino);
   if (!OPTIMIZADOR.ORIENTACIONES[state.orientacion_preferida]) state.orientacion_preferida = OPTIMIZADOR.ORIENTACION_PREFERIDA;
   state.optimizacion = null;
@@ -217,8 +225,98 @@ function proyecto() {
     seleccion: state.seleccion,
     opcionales: [...state.opcionales],
     zona: state.zona || undefined,
-    sitio: state.viento_kmh !== '' ? { viento_kmh: +state.viento_kmh } : undefined
+    sitio: sitioProyecto()
   };
+}
+
+// ------- Sitio: municipio, viento y nieve (CTE DB SE-AE) -------
+// Normativa y municipios salen de datos/municipios.js (ver datos/LEEME_municipios.md)
+const DATOS_SITIO = window.SITIO_DATOS || { normativa: null, municipios: { filas: [] } };
+const NORMATIVA = DATOS_SITIO.normativa;
+const MUNICIPIOS = SITIO.indice(SITIO.desempaquetar(DATOS_SITIO));
+const sitioPorDefecto = () => ({ municipio: null, categoria: 'II', pendiente: '', viento_manual: false, nieve_manual: false });
+
+function municipioActual() {
+  return state.sitio.municipio ? MUNICIPIOS.porIne.get(state.sitio.municipio) || null : null;
+}
+function cargasMunicipio(altura = 10) {
+  const m = municipioActual();
+  return m && NORMATIVA ? SITIO.cargas(NORMATIVA, m, { categoria: state.sitio.categoria, altura }) : null;
+}
+// Viento y nieve del municipio, salvo los escritos a mano
+function aplicarCargasMunicipio() {
+  const c = cargasMunicipio();
+  if (!c) return;
+  if (!state.sitio.viento_manual) state.viento_kmh = Math.round(c.viento.kmh * 10) / 10;
+  if (!state.sitio.nieve_manual) state.nieve_kgm2 = c.nieve ? Math.round(c.nieve.kgm2) : '';
+}
+function sitioProyecto() {
+  const s = {};
+  if (state.viento_kmh !== '') s.viento_kmh = +state.viento_kmh;
+  if (state.nieve_kgm2 !== '') s.nieve = +state.nieve_kgm2;
+  return Object.keys(s).length ? s : undefined;
+}
+// De dónde sale cada valor (para la pantalla y la propuesta)
+function origenCarga(tipo) {
+  const valor = tipo === 'viento' ? state.viento_kmh : state.nieve_kgm2;
+  if (valor === '') return '';
+  const manual = tipo === 'viento' ? state.sitio.viento_manual : state.sitio.nieve_manual;
+  return municipioActual() && !manual ? 'municipio' : 'manual';
+}
+// Todo lo del sitio en un objeto (propuesta)
+function infoSitio(r) {
+  const m = municipioActual();
+  const c = cargasMunicipio(r.geometria.altura_cumbrera);
+  const cat = NORMATIVA && NORMATIVA.categorias_terreno[state.sitio.categoria];
+  return {
+    municipio: m, cargas: c, categoria: cat ? cat.nombre : state.sitio.categoria, pendiente: state.sitio.pendiente,
+    viento_kmh: state.viento_kmh, nieve_kgm2: state.nieve_kgm2, origen_viento: origenCarga('viento'), origen_nieve: origenCarga('nieve'),
+    fuente: NORMATIVA ? NORMATIVA.fuente : '', estado: NORMATIVA ? NORMATIVA.estado : ''
+  };
+}
+
+function renderSitio({ r }) {
+  const entrada = document.getElementById('municipio');
+  const lista = document.getElementById('lista-municipios');
+  if (!lista.options.length && MUNICIPIOS.lista.length) {
+    lista.innerHTML = MUNICIPIOS.lista.map(m => `<option value="${esc(m.etiqueta)}"></option>`).join('');
+  }
+  const m = municipioActual();
+  entrada.disabled = !MUNICIPIOS.lista.length;
+  entrada.placeholder = MUNICIPIOS.lista.length ? `Escribe el municipio (${MUNICIPIOS.lista.length.toLocaleString('es-ES')} en la tabla)` : 'Tabla de municipios pendiente';
+  if (document.activeElement !== entrada && !entrada.dataset.noEncontrado) entrada.value = m ? m.etiqueta : '';
+  const info = document.getElementById('municipio-info');
+  const c = r ? cargasMunicipio(r.geometria.altura_cumbrera) : cargasMunicipio();
+  const f = (v, d = 2) => fmtNum(v, d);
+  if (!MUNICIPIOS.lista.length) {
+    info.innerHTML = '<p class="hint">Aún no está cargada la tabla de municipios del CTE (ver datos/LEEME_municipios.md): escribe el viento y la nieve del sitio a mano.</p>';
+  } else if (entrada.dataset.noEncontrado) {
+    info.innerHTML = `<div class="aviso ambar">«${esc(entrada.dataset.noEncontrado)}» no está en la tabla: elige uno de la lista.</div>`;
+  } else if (m && c) {
+    info.innerHTML = `<div class="municipio-datos">
+        <div>Zona eólica <strong>${esc(m.zona_eolica)}</strong>: v<sub>b</sub> ${f(c.viento.vb, 0)} m/s (${f(c.viento.kmh, 1)} km/h), q<sub>b</sub> ${f(c.viento.qb)} kN/m²${c.viento.ce !== null && r ? ` · c<sub>e</sub> ${f(c.viento.ce)} a ${f(c.viento.altura, 1)} m (cumbrera) → q<sub>e</sub> ${f(c.viento.qe)} kN/m²` : ''}</div>
+        <div>Zona de invierno <strong>${m.zona_invierno}</strong> · altitud ${f(m.altitud, 0)} m → ${c.nieve ? `s<sub>k</sub> ${f(c.nieve.sk)} kN/m² (${f(c.nieve.kgm2, 0)} kg/m²)` : '<span class="ambar">tabla E.2 de nieve pendiente: escribe la nieve a mano</span>'}</div>
+      </div>`;
+  } else {
+    info.innerHTML = '<p class="hint">Al elegir el municipio (o cargar la parcela del Catastro de rústica) se rellenan el viento y la nieve.</p>';
+  }
+  const poner = (id, v) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = v ?? ''; };
+  poner('viento', state.viento_kmh);
+  poner('nieve', state.nieve_kgm2);
+  const etiqueta = (o) => o === 'municipio' ? 'del municipio' : o === 'manual' ? 'manual' : '';
+  for (const t of ['viento', 'nieve']) {
+    const o = origenCarga(t), el = document.getElementById(`${t}-origen`);
+    el.textContent = etiqueta(o);
+    el.className = `origen origen-${o || 'vacio'}`;
+  }
+  document.getElementById('btn-cargas-municipio').hidden = !(m && (state.sitio.viento_manual || state.sitio.nieve_manual));
+  const cat = document.getElementById('categoria-terreno');
+  const cats = NORMATIVA ? Object.entries(NORMATIVA.categorias_terreno).filter(([k]) => k !== 'nota') : [];
+  if (!cat.options.length) cat.innerHTML = cats.map(([k, d]) => `<option value="${k}">${esc(d.nombre)}</option>`).join('');
+  cat.value = state.sitio.categoria;
+  const d = NORMATIVA && NORMATIVA.categorias_terreno[state.sitio.categoria];
+  document.getElementById('categoria-explicacion').textContent = d ? d.explicacion : '';
+  poner('pendiente', state.sitio.pendiente);
 }
 
 function calcularTodo() {
@@ -287,24 +385,30 @@ function renderResumenCorto({ modelo, r, error }) {
   marca.className = `marca-avisos ${rojos ? 'rojo' : ambar ? 'ambar' : ''}`;
 }
 
-// Emplazamiento: aptitud de cada modelo del catálogo para el viento del sitio
+// Emplazamiento: aptitud de cada modelo del catálogo para el viento y la nieve del sitio
 function renderAptitud() {
   const caja = document.getElementById('aptitud-modelos');
-  if (state.viento_kmh === '') { caja.innerHTML = '<p class="hint">Con el viento del sitio se comprueba cada modelo (apto / al límite / no apto) antes de diseñar.</p>'; return; }
-  const sitio = { viento_kmh: +state.viento_kmh };
+  const sitio = sitioProyecto();
+  if (!sitio) { caja.innerHTML = '<p class="hint">Con el viento y la nieve del sitio se comprueba cada modelo (apto / al límite / no apto, margen 10 %) antes de diseñar.</p>'; return; }
   const texto = { apto: 'Apto', al_limite: 'Al límite', no_apto: 'No apto — requiere cálculo' };
-  caja.innerHTML = `<table class="tabla-aptitud">${CATALOGO.modelos.map(m => {
-    const e = MOTOR.avisos.emplazamiento(m, sitio);
-    return `<tr><td>${esc(m.nombre)} <small>(${m.viento_cerrado ?? '—'} km/h)</small></td><td class="apto-${e.resultado}">${texto[e.resultado]}</td></tr>`;
-  }).join('')}</table>`;
+  caja.innerHTML = `<table class="tabla-aptitud">
+    <tr><th>Modelo (declarado)</th><th>Viento</th><th>Nieve</th><th>Resultado</th></tr>
+    ${CATALOGO.modelos.map(m => {
+      const e = MOTOR.avisos.emplazamiento(m, sitio);
+      const parte = (v) => v === 'sin_dato' ? '<span class="ambar">sin dato</span>' : texto[v].replace(' — requiere cálculo', '');
+      return `<tr><td>${esc(m.nombre)} <small>(${m.viento_cerrado ?? '—'} km/h · ${m.nieve > 0 ? `${m.nieve} kg/m²` : 'nieve sin declarar'})</small></td>
+        <td class="apto-${e.viento}">${parte(e.viento)}</td><td class="apto-${e.nieve}">${sitio.nieve ? parte(e.nieve) : '—'}</td><td class="apto-${e.resultado}">${texto[e.resultado]}</td></tr>`;
+    }).join('')}</table>`;
 }
 
 // ------- Render -------
 function render() {
+  aplicarCargasMunicipio();
   const datos = calcularTodo();
   renderPasos();
   renderConfigPanel(datos);
   renderResumenCorto(datos);
+  renderSitio(datos);
   if (datos.error) {
     document.getElementById('summary').innerHTML = `<div class="aviso rojo">${esc(datos.error)}</div>`;
     document.getElementById('materiales').innerHTML = '';
@@ -468,7 +572,7 @@ function renderSummary({ modelo, r }) {
       <tr><td>Tramos entre pórticos</td><td>${g.tramos} × ${fmtNum(g.sep_porticos, 2)} m</td></tr>
       <tr><td>Altura canal / cumbrera</td><td>${fmtNum(g.altura_canal, 2)} m / ${fmtNum(g.altura_cumbrera, 2)} m</td></tr>
       <tr><td>Viento declarado (cerrado)</td><td>${modelo.viento_cerrado ?? '—'} km/h</td></tr>
-      ${e ? `<tr><td>Emplazamiento (viento ${fmtNum(state.viento_kmh, 0)} km/h)</td><td class="apto-${e.resultado}">${textoApto[e.resultado]}</td></tr>` : ''}
+      ${e ? `<tr><td>Emplazamiento (${[state.viento_kmh !== '' ? `viento ${fmtNum(state.viento_kmh, 1)} km/h` : '', state.nieve_kgm2 !== '' ? `nieve ${fmtNum(state.nieve_kgm2, 0)} kg/m²` : ''].filter(Boolean).join(', ')})</td><td class="apto-${e.resultado}">${textoApto[e.resultado]}</td></tr>` : ''}
     </table>
 
     <h4 class="sub">Desglose por categoría</h4>
@@ -667,7 +771,7 @@ async function descargarPlanos(soloEsta) {
 function abrirPropuesta() {
   const { r, error } = calcularTodo();
   if (error) return;
-  const html = PROPUESTA.generar({ state, catalogo: CATALOGO, r, perfiles: perfilesUsados(r), planos: generarPlanos(r) });
+  const html = PROPUESTA.generar({ state, catalogo: CATALOGO, r, perfiles: perfilesUsados(r), planos: generarPlanos(r), sitio: infoSitio(r) });
   document.getElementById('propuesta-container').innerHTML = html;
   document.body.classList.add('modo-propuesta');
 }
@@ -687,6 +791,15 @@ function cargarArchivoParcela(archivo) {
     }
     errorParcela = null;
     state.terreno = { anillos: r.anillos, meta: r.meta, implantacion: null, avisos: r.avisos };
+    // Rústica: la referencia catastral lleva provincia y municipio del Catastro
+    const codigo = SITIO.municipioDeRefcat(r.meta.refcat);
+    const m = codigo && MUNICIPIOS.porCatastro.get(codigo);
+    state.terreno.municipio_catastro = codigo;
+    if (m) {
+      state.sitio.municipio = m.ine;
+      state.sitio.viento_manual = state.sitio.nieve_manual = false;
+      delete document.getElementById('municipio').dataset.noEncontrado;
+    }
     state.optimizacion = null;
     state.vistaActual = 'emplazamiento';
     render();
@@ -742,7 +855,7 @@ function optimizar() {
       anillos, catalogo: CATALOGO, holgura: holguraProyecto(), perfil: state.perfil, orientacion: state.orientacion_preferida,
       azimuts: p ? [p.orientacion, p.orientacion + 90] : undefined,
       base: { seleccion: state.seleccion, opcionales: [...state.opcionales], puertas: state.puertas, zona: state.zona || undefined,
-        sitio: state.viento_kmh !== '' ? { viento_kmh: +state.viento_kmh } : undefined }
+        sitio: sitioProyecto() }
     });
     state.optimizacion = { res, anillos, elegida: null };
     renderOptimizador();
@@ -832,7 +945,24 @@ function bindEvents() {
   on('separacion', 'change', el => { state.separacion = +el.value; });
   on('altura-canal', 'change', el => { state.altura_canal = +el.value; });
   on('zona', 'change', el => { state.zona = el.value; });
-  on('viento', 'input', el => { state.viento_kmh = el.value === '' ? '' : Math.max(0, +el.value || 0); });
+  on('viento', 'input', el => { state.viento_kmh = el.value === '' ? '' : Math.max(0, +el.value || 0); state.sitio.viento_manual = true; });
+  on('nieve', 'input', el => { state.nieve_kgm2 = el.value === '' ? '' : Math.max(0, +el.value || 0); state.sitio.nieve_manual = true; });
+  on('municipio', 'change', el => {
+    const m = MUNICIPIOS.buscar(el.value);
+    delete el.dataset.noEncontrado;
+    if (m) {
+      state.sitio.municipio = m.ine;
+      state.sitio.viento_manual = state.sitio.nieve_manual = false;   // elegir municipio = usar sus valores
+    } else if (el.value.trim() === '') {
+      state.sitio.municipio = null;
+      state.sitio.viento_manual = state.sitio.nieve_manual = true;    // lo que quede escrito es manual
+    } else {
+      el.dataset.noEncontrado = el.value.trim();
+    }
+  });
+  on('btn-cargas-municipio', 'click', () => { state.sitio.viento_manual = state.sitio.nieve_manual = false; });
+  on('categoria-terreno', 'change', el => { state.sitio.categoria = el.value; });
+  on('pendiente', 'input', el => { state.sitio.pendiente = el.value === '' ? '' : Math.max(0, +el.value || 0); });
   on('parcela-largo', 'input', el => { state.parcela.largo = el.value; });
   on('parcela-ancho', 'input', el => { state.parcela.ancho = el.value; });
   on('parcela-orientacion', 'input', el => { state.parcela.orientacion = el.value; });

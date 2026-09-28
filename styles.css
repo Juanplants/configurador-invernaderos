@@ -719,3 +719,13 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 .tabla-aptitud td.apto-apto { color: #2e7d32; }
 .tabla-aptitud td.apto-al_limite { color: #b26a00; }
 .tabla-aptitud td.apto-no_apto { color: #c62828; }
+
+/* Sitio: municipio, viento y nieve */
+.origen { font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 8px; margin-left: 4px; }
+.origen-municipio { background: #e8f5e9; color: #1b5e20; }
+.origen-manual { background: #fff3cd; color: #b26a00; }
+.municipio-datos { font-size: 12px; background: #f1f8e9; border: 1px solid #c5e1a5; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; display: grid; gap: 3px; }
+.municipio-datos .ambar, .tabla-aptitud .ambar { color: #b26a00; }
+.tabla-aptitud th { text-align: left; font-size: 11px; color: #666; font-weight: 600; padding: 3px 4px; border-bottom: 1px solid #e0e0e0; }
+.tabla-aptitud td.apto-sin_dato { color: #b26a00; }
+#btn-cargas-municipio { margin-bottom: 8px; }
