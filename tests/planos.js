@@ -50,6 +50,10 @@ function comunes(h, errores) {
   if (!HOJA.ESCALAS.includes(h.escala)) errores.push(`escala 1:${h.escala} fuera de la serie`);
   if (!h.svg.includes(`>1:${h.escala}<`)) errores.push('el cajetín no muestra la escala');
   if (!h.svg.includes(`>${HOJA.NOTA_CAJETIN}<`)) errores.push('falta la nota de plano de oferta en el cajetín');
+  // Todo texto debe poder escribirse con la Helvetica del PDF (WinAnsi)
+  const textos = [...h.svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(m => m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+  const raros = [...new Set(textos.join('').split('').filter(c => !HOJA.enWinAnsi(c)))];
+  if (raros.length) errores.push(`caracteres que el PDF no puede escribir: ${raros.join(' ')}`);
   const ocupa = HOJA.ocupacion(h.dibujo);
   if (ocupa < 0.5) errores.push(`el dibujo ocupa solo el ${(ocupa * 100).toFixed(0)} % del espacio disponible`);
 }
@@ -191,6 +195,16 @@ for (const m of HOJAS.catalogo.modelos) {
   comprobar('norte a 60° con la planta normal', normal.svg.includes('rotate(60)') && normal.fallos.length === 0);
   comprobar('norte a 150° con la planta girada', girada.svg.includes('rotate(150)') && girada.fallos.length === 0);
   comprobar('sin orientación no se dibuja el norte', !sin.cajas.some(c => c.tipo === 'norte'));
+}
+
+// Textos del usuario con caracteres fuera de WinAnsi: se sustituyen, no rompen el PDF
+{
+  const m = HOJAS.catalogo.modelos[0];
+  const d = Object.assign(HOJAS.datos({ g: HOJAS.GEO.calcular(m, { naves: 2, tramos: 10 }), modelo: m }),
+    { proyecto: { cliente: 'Finca ≈ Norte 🌱 农场', codigo: 'X−1', ubicacion: 'Níjar' } });
+  const h = HOJAS.PLANTA.planta(d);
+  const textos = [...h.svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map(x => x[1]).join('');
+  comprobar('textos del usuario pasados a WinAnsi', [...textos].every(HOJA.enWinAnsi) && textos.includes('Finca aprox. Norte') && textos.includes('X-1'));
 }
 
 // Registro: un texto obligatorio que no cabe queda anotado como fallo
