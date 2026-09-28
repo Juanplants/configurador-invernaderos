@@ -87,6 +87,7 @@ Nivel A (balances simples: renovaciones/hora, potencia de calefacción, efecto d
 | 4. Planos | En curso: hojas A3 de **planta, alzados, sección y emplazamiento** con puertas, y **PDF A3** a escala real (`js/planos/`, `js/exportar.js`; `tests/planos.js`: cero solapes y ≥ 50 % de ocupación en 218 hojas); detalles y cimentación esperan datos del fabricante | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
 | 5. Interfaz y salidas | **Hecho**: interfaz conectada al motor y al catálogo importado, en el flujo de 6 pasos con el plano siempre visible (`js/pasos.js`, `tests/pasos.js`, `tests/pasos_navegador.js`); emplazamiento con parcela rectangular o del Catastro; salidas (planos en PDF, proyecto .json, Excel con hoja de petición de oferta, propuesta con planos A3; `tests/salidas.js`) | Proyecto completo sin tocar código |
 | 6. Terreno | **Hecho** (`js/terreno/`, `tests/terreno.js`, `tests/terreno_navegador.js`): parcela GML/KML del Catastro sin conexión, retranqueo y camino perimetral, optimizador con perfiles, 3 mejores con croquis y emplazamiento con el polígono real; probado con una parcela irregular inventada | 3 opciones coherentes con una parcela real |
+| 6b. Viento y nieve por municipio | **Hecho a falta de datos**: lógica, interfaz, propuesta y pruebas (`js/sitio.js`, `tests/sitio.js`, `tests/sitio_navegador.js`); tabla de municipios y tabla E.2 de nieve pendientes de la fuente oficial (`datos/LEEME_municipios.md`) | Con la tabla oficial, el municipio da viento y nieve del CTE |
 
 ## 10. Decisiones abiertas / datos a pedir a fabricantes
 
