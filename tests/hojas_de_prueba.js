@@ -87,6 +87,8 @@ function casos() {
     poligono('parcela con hueco, invernadero a 125°', modelo, 3, 10, conHueco, { azimut: 125, camino: 0 });
   }
   const m96 = catalogo.modelos.find(m => m.id === 'MT-GOT-96');
+  // Invernadero grande junto al lindero: el rótulo de la distancia no debe cruzarlo
+  poligono('parcela del Catastro, casi llena', catalogo.modelos.find(m => m.id === 'MT-GOT-80'), 15, 30, ejemplo);
   poligono('parcela del Catastro, grande', m96, 10, 30, ejemplo);
   poligono('parcela del Catastro, no cumple el retranqueo', m96, 10, 30, ejemplo, { mover: 60 });
   return lista;

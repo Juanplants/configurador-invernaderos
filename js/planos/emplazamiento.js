@@ -318,7 +318,14 @@
     }
 
     // --- Rótulos (opcionales: el dato va también en las notas) ---
-    if (medio) partes.push(H.rotulo(reg, { px: medio[0], py: medio[1], texto: `Distancia mínima al lindero ${fmt(e.distancia)} m`, largo: Math.min(U.x + U.w - medio[0], medio[0] - U.x) + 6, arriba: U.y, limite: DIBUJO, nombre: 'distancia mínima', obligatoria: false }));
+    // Rótulo de la distancia: hacia el lado libre más cercano, sin cruzar el invernadero
+    let lineaDistancia = null;
+    if (medio) {
+      const r = H.rotulo(reg, { px: medio[0], py: medio[1], texto: `Distancia mínima al lindero ${fmt(e.distancia)} m`, largo: 6, arriba: U.y, limite: DIBUJO, nombre: 'distancia mínima', obligatoria: false, evitar: G.length ? [G] : [], corto: true });
+      const m = r.match(/^<line x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"/);
+      if (m) lineaDistancia = m.slice(1).map(Number);
+      partes.push(r);
+    }
     if (G.length) {
       const cg = [(G[0][0] + G[2][0]) / 2, (G[0][1] + G[2][1]) / 2];
       partes.push(H.rotulo(reg, { px: cg[0], py: cg[1], texto: 'Invernadero', largo: U.x + U.w - cg[0] + 6, arriba: U.y, limite: DIBUJO, nombre: 'invernadero', obligatoria: false }));
@@ -355,7 +362,7 @@
     return {
       svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`,
       escala, giroHoja, cajas: reg.cajas, fallos: reg.fallos, cabe: true, encaje: e,
-      dibujo: { x: U.x, y: U.y, w: W, h: Hh, disponible: disp, invernadero: G, transformar: (q) => P(giro(q)) }
+      dibujo: { x: U.x, y: U.y, w: W, h: Hh, disponible: disp, invernadero: G, lineaDistancia, transformar: (q) => P(giro(q)) }
     };
   }
 
