@@ -25,7 +25,7 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
 | `tests/importacion.js` | Pruebas del importador (32): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
-| `tests/planos.js` | Pruebas de las cuatro hojas (169): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, escala normalizada y real; en la sección, arco, alturas y ventana cenital |
+| `tests/planos.js` | Pruebas de las cuatro hojas (184 comprobaciones, 176 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital |
 | `tests/hojas_de_prueba.js` | Casos comunes a las dos pruebas de planos (168 hojas) |
 | `tests/planos_navegador.js` | En Chromium, cada texto real cabe en su caja estimada (se omite sin Playwright) |
 | `tests/generar_catalogo_con_errores.py` → `tests/datos/Catalogo_con_errores.xlsx` | Plantilla con 6 errores y 3 avisos provocados a propósito |
@@ -72,15 +72,18 @@ Botón **Cargar catálogo** (arriba a la derecha) → elegir la plantilla `.xlsx
 Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del cajetín es real; reducidas (pantalla, propuesta en A4) vale la escala gráfica.
 
 - **Zonas:** marco UNE-EN ISO 5457 (20 mm a la izquierda, 10 mm en el resto); cajetín 180 × 50 abajo a la derecha; leyenda y escala gráfica a su izquierda; encima, el dibujo con sus bandas de ejes y cotas.
-- **Escala:** la mayor de la serie ISO 5455 (1:20, 1:50, 1:100, 1:200, 1:500, 1:1000) con la que el dibujo cabe. El largo va en horizontal salvo que en vertical quepa a una escala mayor.
+- **Escala:** serie UNE-EN ISO 5455 más las intermedias de construcción: 1:20, 1:50, 1:100, 1:200, 1:250, 1:300, 1:400, 1:500, 1:1000, 1:2000. Cada hoja se dibuja de la mayor a la menor y se queda con la primera en la que caben el dibujo, sus cotas, ejes y rótulos obligatorios (`HOJA.mejorEscala`). Prueba de encaje: el dibujo ocupa al menos el 50 % del ancho o del alto disponible.
+- **Planta:** el lado largo siempre en horizontal (si el ancho total es mayor que el largo, la planta va girada: 10 × 9,60 × 80 m sale a 1:500). Norte opcional (`orientacion`: azimut del eje largo) que gira con la planta; lo dará la hoja de emplazamiento.
+- **Cajetín:** incluye «Plano informativo de oferta. No válido para ejecución ni tramitación.»
 - **Ejes:** pórticos numerados (1, 2, 3…), líneas de pilares con letras (A, B, C…). Si las burbujas no caben todas, se rotula uno de cada 2, 5 o 10, siempre el primero y el último.
 - **Cotas:** fuera del dibujo; cadena de vanos por dentro y total por fuera. Si el texto de cada vano no cabe entre sus líneas, se agrupan los vanos iguales (`60 × 4,00`).
 - **Registro de cajas** (`HOJA.Registro`): cada texto, burbuja, línea de cota y el contorno del dibujo apuntan su caja; un texto se coloca en la primera posición candidata que no pisa nada. Si un texto obligatorio no cabe, queda en `fallos`. El ancho de los textos se estima con una tabla por carácter holgada; `tests/planos_navegador.js` comprueba en Chromium que el texto real cabe.
 - **Hojas hechas:** 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal.
-- **Sección y alzado frontal:** arco dibujado como la parábola de luz = ancho de nave y flecha del catálogo (la misma forma con la que el motor calcula longitud de arco y volumen). Alturas a canal, flecha y cumbrera acotadas. Con más de 3 naves se dibujan la 1.ª, la 2.ª, una interrupción y la última: la cota de la interrupción dice cuántas naves faltan y la total es la real; así el arco sale a 1:50 o 1:100.
+- **Sección y alzado frontal:** arco dibujado como la parábola de luz = ancho de nave y flecha del catálogo (la misma forma con la que el motor calcula longitud de arco y volumen). Alturas a canal, flecha y cumbrera acotadas. Si el invernadero entero cabe a 1:300 o mayor, se dibuja completo; si no, se interrumpe a la mayor escala en la que quepan al menos 2 naves, con tantas como llenen el ancho (p. ej. 15 naves de 9,60 m: 3 naves a 1:100). La cota de la interrupción dice cuántas naves faltan y la total es la real.
+- **Puertas:** medidas de la hoja Equipos («Ancho puerta», «Alto puerta»); cantidad de la partida de puertas. Una por nave en el hastial frontal y el resto en el trasero, en el hueco entre pilares de hastial más centrado de la nave. Se dibujan en planta (hoja corredera por fuera del hastial) y en el alzado frontal.
 - **Ventana cenital en la sección:** según la opción elegida (1 línea = una hoja, 2 = mariposa, ninguna = techo cerrado), con bisagra en la cumbrera, hoja cerrada sobre el arco y abierta a 2·arcsen(rendija / 2·hoja). Los datos salen del resultado del motor (`r.ventilacion`), así coinciden con la lista de materiales. Rótulo obligatorio con línea de referencia.
 - **Alzado lateral:** ventana cenital del 2.º al penúltimo pórtico (`long_ventana_cenital`) y ventana lateral si la hay (posición orientativa). Sus rótulos son opcionales: con 60 tramos a 1:1000 las burbujas no dejan paso; el dato va siempre en las notas.
-- Pendiente: detalles, cimentación, emplazamiento; visor con pestañas por hoja; exportar PDF por hoja; puertas (el catálogo no tiene sus medidas como dato). El norte no se dibuja hasta tener la orientación de la parcela (hoja de emplazamiento).
+- Pendiente: emplazamiento con el norte, detalles, cimentación; exportar PDF por hoja. El norte no se dibuja hasta tener la orientación de la parcela.
 
 ## Siguientes pasos (en orden)
 

@@ -46,6 +46,7 @@ console.log('Catálogo con errores provocados');
   const ESPERADO = {
     errores: [
       { hoja: 'Modelos', fila: 7, columna: 'Alturas a canal admitidas', codigo: 'medidas' },   // modelo sin alturas
+      { hoja: 'Equipos', fila: 9, columna: 'Ancho puerta', codigo: 'numero' },                 // "tres"
       { hoja: 'Componentes', fila: 7, columna: 'Ref', codigo: 'ref' },                          // ARC-99 no existe
       { hoja: 'Componentes', fila: 9, columna: 'Factor', codigo: 'variantes' },                 // 3 variantes, 2 modelos
       { hoja: 'Componentes', fila: 10, columna: 'Regla', codigo: 'regla' },                     // por_metro
@@ -82,6 +83,12 @@ console.log('Casos sueltos');
   const codigos = IMPORTADOR.validar(cat).errores.map(e => e.codigo);
   comprobar('decimal con coma en medidas → error', codigos.includes('medidas'));
   comprobar('Id repetido → error', codigos.includes('duplicado'));
+
+  const sinAlto = JSON.parse(JSON.stringify(catalogo));
+  delete sinAlto.equipos.find(e => e.tipo === 'puerta').alto_puerta;
+  const v2 = IMPORTADOR.validar(sinAlto);
+  comprobar('puerta sin alto → aviso, no error', v2.errores.length === 0 && v2.avisos.some(a => a.codigo === 'puerta'));
+  comprobar('la puerta de ejemplo mide 3 × 3 m', (() => { const p = catalogo.equipos.find(e => e.tipo === 'puerta'); return p.ancho_puerta === 3 && p.alto_puerta === 3; })());
 
   comprobar('aNumero("1,4") = 1.4', IMPORTADOR.aNumero('1,4') === 1.4);
   comprobar('aNumero("consultar") no es número', Number.isNaN(IMPORTADOR.aNumero('consultar')));

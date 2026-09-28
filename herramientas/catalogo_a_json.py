@@ -16,6 +16,8 @@ def clave(texto):
 HOJAS = ["Empresa", "Modelos", "Perfiles", "Componentes", "Cubiertas", "Equipos", "Obra local"]
 # Columnas que se guardan como número aunque vengan como texto ("1,4")
 NUMERICAS = ("precio", "precio_unitario", "movilizacion", "montaje", "hoyos_y_dados")
+# Medidas que se pasan a número si vienen como texto (si no, las rechaza el validador de la app)
+MEDIDAS_TEXTO = ("ancho_puerta", "alto_puerta")
 NUMERO = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$", re.I)
 
 def leer(ws):
@@ -34,6 +36,10 @@ def leer(ws):
                 else:
                     print(f"Aviso: {ws.title} fila {n}, {k} = {v!r} no es un número: se trata como sin precio", file=sys.stderr)
                     del d[k]
+        for k in MEDIDAS_TEXTO:
+            v = d.get(k)
+            if isinstance(v, str) and NUMERO.match(v.strip().replace(",", ".", 1)):
+                d[k] = float(v.strip().replace(",", ".", 1))
         filas.append(d)
     return filas
 

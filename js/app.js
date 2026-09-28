@@ -403,9 +403,13 @@ function ventanasDelProyecto(r) {
   const g = r.geometria, v = r.ventilacion;
   const lineas = v.lineas_cenital || 0;
   const longitud = g.naves * lineas * g.long_ventana_cenital;
+  // Puertas: la partida cuya referencia es un equipo de tipo puerta (cantidad y medidas del catálogo)
+  const lineaPuerta = r.lineas.find(l => (CATALOGO.equipos || []).some(e => e.id === l.ref && e.tipo === 'puerta'));
+  const equipo = lineaPuerta && CATALOGO.equipos.find(e => e.id === lineaPuerta.ref);
   return {
     ventana: lineas ? { lineas, hoja: g.ancho_hoja, rendija: longitud > 0 ? v.cenital_geometrica / longitud : g.ancho_hoja } : null,
-    lateral: v.lateral_geometrica > 0 ? { alto: v.lateral_geometrica / (2 * g.largo) } : null
+    lateral: v.lateral_geometrica > 0 ? { alto: v.lateral_geometrica / (2 * g.largo) } : null,
+    puertas: equipo ? { cantidad: lineaPuerta.cantidad, ancho: equipo.ancho_puerta, alto: equipo.alto_puerta } : null
   };
 }
 

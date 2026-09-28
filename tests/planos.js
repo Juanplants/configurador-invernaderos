@@ -2,11 +2,16 @@
 // Pruebas de las hojas de planos (fase 4)
 // ============================================================
 // Ejecutar:  node tests/planos.js
-// Aceptación: cero solapes en 1/2/5/10 naves × 10/20/60 tramos, en los
-// dos modelos del catálogo de ejemplo, para planta, alzado frontal, alzado
-// lateral y sección (esta con techo cerrado, una hoja y mariposa). Además:
-// todo dentro del marco, escala normalizada, la mayor que cabe y real, y en
-// la sección el arco, las alturas y la ventana cenital del catálogo.
+// Aceptación: en 1/2/5/10 naves × 10/20/60 tramos, en los dos modelos del
+// catálogo de ejemplo, para planta, alzado frontal, alzado lateral y sección
+// (esta con techo cerrado, una hoja y mariposa):
+//   · cero solapes y todo dentro del marco;
+//   · el dibujo ocupa al menos el 50 % del ancho o del alto disponible;
+//   · escala de la serie, la mayor con la que caben cotas, ejes y rótulos
+//     (a la siguiente mayor, la hoja no cabe o le falta algún texto), y real;
+//   · planta con el lado largo en horizontal; alzados enteros si caben a 1:300
+//     o mayor; puertas del catálogo dibujadas; nota de plano de oferta.
+// En la sección, además, el arco, las alturas y la ventana cenital del catálogo.
 // (tests/planos_navegador.js comprueba en Chromium que los textos reales
 // caben en las cajas estimadas.)
 
@@ -42,21 +47,27 @@ function comunes(h, errores) {
     if (!HOJA.dentro(c, HOJA.MARCO)) errores.push(`fuera del marco: ${c.tipo} "${c.nombre || ''}"`);
     if (EN_DIBUJO.has(c.tipo) && !HOJA.dentro(c, HOJA.DIBUJO)) errores.push(`${c.tipo} "${c.nombre || ''}" invade la leyenda o el cajetín`);
   }
-  if (!HOJA.ESCALAS.includes(h.escala) || h.escala < 20 || h.escala > 1000) errores.push(`escala 1:${h.escala} fuera de 1:20…1:1000`);
+  if (!HOJA.ESCALAS.includes(h.escala)) errores.push(`escala 1:${h.escala} fuera de la serie`);
   if (!h.svg.includes(`>1:${h.escala}<`)) errores.push('el cajetín no muestra la escala');
+  if (!h.svg.includes(`>${HOJA.NOTA_CAJETIN}<`)) errores.push('falta la nota de plano de oferta en el cajetín');
+  const ocupa = HOJA.ocupacion(h.dibujo);
+  if (ocupa < 0.5) errores.push(`el dibujo ocupa solo el ${(ocupa * 100).toFixed(0)} % del espacio disponible`);
 }
+const noVale = (h) => !h.cabe || h.fallos.length > 0;
+const puertasDibujadas = (h) => (h.svg.match(/data-puerta=/g) || []).length;
 const mayorQue = (E) => HOJA.ESCALAS[HOJA.ESCALAS.indexOf(E) - 1];
 const casi = (a, b) => Math.abs(a - b) < 1e-6;
 const cotas = (h) => h.cajas.filter(c => c.tipo === 'cota').map(c => c.nombre);
 const ejes = (h) => new Set(h.cajas.filter(c => c.tipo === 'eje').map(c => c.nombre));
 
 // ---------- Planta ----------
-function planta(h, { g, naves }, errores) {
+function planta(h, caso, errores) {
+  const { g, naves } = caso;
   const d = h.dibujo, E = h.escala, mayor = mayorQue(E);
-  if (mayor) {
-    const cabe = (a, b) => a * 1000 / mayor <= d.disponible.w && b * 1000 / mayor <= d.disponible.h;
-    if (cabe(g.largo, g.ancho_total) || cabe(g.ancho_total, g.largo)) errores.push(`cabría a 1:${mayor}`);
-  }
+  if (mayor && !noVale(HOJAS.PLANTA.dibujarPlanta(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
+  if (d.largoEnX !== (g.largo >= g.ancho_total)) errores.push('el lado largo no está en horizontal');
+  const esperadas = Math.min(caso.puertas ? caso.puertas.cantidad : 1, 2 * naves);
+  if (puertasDibujadas(h) !== esperadas) errores.push(`${puertasDibujadas(h)} puertas dibujadas, se esperaban ${esperadas}`);
   const [enX, enY] = d.largoEnX ? [g.largo, g.ancho_total] : [g.ancho_total, g.largo];
   if (!casi(d.w, enX * 1000 / E) || !casi(d.h, enY * 1000 / E)) errores.push('el dibujo no está a la escala del cajetín');
   for (const e of ['1', String(g.porticos), 'A', HOJAS.letra(naves)]) if (!ejes(h).has(e)) errores.push(`falta la burbuja del eje ${e}`);
@@ -66,19 +77,36 @@ function planta(h, { g, naves }, errores) {
 }
 
 // ---------- Alzado frontal y sección ----------
-function transversal(h, { g, naves }, errores) {
+function transversal(h, caso, errores) {
+  const { g, naves } = caso;
   const d = h.dibujo, E = h.escala, k = 1000 / E, mayor = mayorQue(E);
-  const dibujadas = Math.min(naves, 3);
-  if (d.naves_dibujadas !== dibujadas || d.corte !== naves > 3) errores.push('naves dibujadas o interrupción incorrectas');
+  const T = HOJAS.TRANSVERSAL, datos = HOJAS.datos(caso), tipo = caso.vista === 'seccion' ? 'seccion' : 'frontal';
+  const prueba = (e, m) => T.dibujarTransversal(tipo, datos, e, T.navesDibujadas(naves, m));
+  const enteroCabe = HOJA.ESCALAS.filter(e => e <= T.COMPLETO_HASTA).some(e => !noVale(prueba(e, naves)));
+  if (enteroCabe) {
+    // Entero, a la mayor escala posible
+    if (d.corte) errores.push('interrumpido aunque cabe entero a 1:300 o mayor');
+    if (mayor && !noVale(prueba(mayor, naves))) errores.push(`cabría entero a 1:${mayor}`);
+  } else {
+    // Interrumpido: a la mayor escala con al menos 2 naves, y tantas como quepan
+    if (!d.corte) errores.push('entero a una escala menor que 1:300');
+    const cabenMas = (e) => Array.from({ length: naves - 2 }, (_, i) => i + 2).some(m => !noVale(prueba(e, m)));
+    if (mayor && cabenMas(mayor)) errores.push(`cabría interrumpido a 1:${mayor}`);
+    if (d.naves_dibujadas + 1 < naves && !noVale(prueba(E, d.naves_dibujadas + 1))) errores.push('caben más naves a la misma escala');
+  }
+  const dibujadas = d.naves_dibujadas;
   if (!casi(d.w, dibujadas * g.ancho_nave * k + d.hueco) || !casi(d.h, g.altura_cumbrera * k)) errores.push('el dibujo no está a la escala del cajetín');
-  if (mayor && dibujadas * g.ancho_nave * 1000 / mayor + d.hueco + 8 <= d.disponible.w && g.altura_cumbrera * 1000 / mayor + 3 <= d.disponible.h) {
-    errores.push(`cabría a 1:${mayor}`);
+  if (caso.vista === 'alzadoFrontal') {
+    const cantidad = caso.puertas ? caso.puertas.cantidad : 1;
+    const frente = Array.from({ length: Math.min(cantidad, naves) }, (_, i) => i);
+    const esperadas = frente.filter(j => HOJAS.TRANSVERSAL.navesDibujadas(naves, dibujadas).includes(j)).length;
+    if (puertasDibujadas(h) !== esperadas) errores.push(`${puertasDibujadas(h)} puertas dibujadas en el frontal, se esperaban ${esperadas}`);
   }
   const c = cotas(h);
   if (!c.some(t => t.includes('canal') && t.endsWith(` ${fmt(g.altura_canal)}`))) errores.push('falta la cota de altura a canal');
   if (!c.some(t => t.includes('cumbrera') && t.endsWith(` ${fmt(g.altura_cumbrera)}`))) errores.push('falta la cota de altura a cumbrera');
   if (!c.some(t => t.includes('ancho total') && t.endsWith(` ${fmt(g.ancho_total)}`))) errores.push('falta la cota del ancho total');
-  if (naves > 3 && !c.some(t => t.endsWith(` ${naves - 3} × ${fmt(g.ancho_nave)}`))) errores.push('falta la cota de la interrupción');
+  if (d.corte && !c.some(t => t.endsWith(` ${naves - dibujadas} × ${fmt(g.ancho_nave)}`))) errores.push('falta la cota de la interrupción');
   for (const e of ['A', HOJAS.letra(naves)]) if (!ejes(h).has(e)) errores.push(`falta la burbuja del eje ${e}`);
 
   // Arco real: cada parábola va de canal a canal (ancho de nave) y sube la flecha
@@ -98,7 +126,7 @@ function seccion(h, caso, errores) {
   const { ventana } = caso;
   const lineas = ventana ? ventana.lineas : 0;
   const hojas = (h.svg.match(/<polyline [^>]*stroke-width="0\.9"\/>/g) || []).length;
-  const esperadas = lineas * Math.min(caso.naves, 3);
+  const esperadas = lineas * h.dibujo.naves_dibujadas;
   if (hojas !== esperadas) errores.push(`${hojas} hojas de ventana dibujadas, se esperaban ${esperadas}`);
   const rotulo = h.cajas.find(c => c.tipo === 'rotulo');
   const texto = !lineas ? 'Techo cerrado' : lineas === 2 ? 'mariposa' : 'una hoja';
@@ -108,10 +136,11 @@ function seccion(h, caso, errores) {
   if (!casi(h.dibujo.apertura, alfa)) errores.push('apertura de la hoja distinta de 2·arcsen(rendija / 2·hoja)');
 }
 
-function lateral(h, { g }, errores) {
+function lateral(h, caso, errores) {
+  const { g } = caso;
   const d = h.dibujo, E = h.escala, mayor = mayorQue(E);
   if (!casi(d.w, g.largo * 1000 / E) || !casi(d.h, g.altura_cumbrera * 1000 / E)) errores.push('el dibujo no está a la escala del cajetín');
-  if (mayor && g.largo * 1000 / mayor + 8 <= d.disponible.w && g.altura_cumbrera * 1000 / mayor + 3 <= d.disponible.h) errores.push(`cabría a 1:${mayor}`);
+  if (mayor && !noVale(HOJAS.LATERAL.dibujarLateral(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
   for (const e of ['1', String(g.porticos)]) if (!ejes(h).has(e)) errores.push(`falta la burbuja del eje ${e}`);
   const c = cotas(h);
   for (const t of [fmt(g.largo), fmt(g.altura_canal), fmt(g.altura_cumbrera)]) if (!c.some(x => x.endsWith(` ${t}`))) errores.push(`falta la cota ${t}`);
@@ -128,6 +157,41 @@ for (const caso of HOJAS.casos()) {
   comprobar(`${caso.nombre} (1:${h.escala})`, errores.length === 0, '\n      ' + errores.slice(0, 8).join('\n      '));
 }
 console.log('Hojas comprobadas:', Object.entries(recuento).map(([v, n]) => `${v} ${n}`).join(', '));
+
+// Ejemplo del encargo: 10 × 9,60 × 80 m → planta girada a 1:500
+{
+  const m = HOJAS.catalogo.modelos.find(x => x.id === 'MT-GOT-96');
+  const g = HOJAS.GEO.calcular(m, { naves: 10, tramos: 20 });
+  const h = HOJAS.PLANTA.planta(HOJAS.datos({ g, modelo: m }));
+  comprobar('10 × 9,60 × 80 m: planta girada a 1:500', h.escala === 500 && h.dibujo.largoEnX === false, `1:${h.escala}`);
+}
+
+// Puertas: entre pilares de hastial (ninguno dentro del hueco) y en el más centrado
+for (const m of HOJAS.catalogo.modelos) {
+  const g = HOJAS.GEO.calcular(m, { naves: 3, tramos: 11 });
+  const lista = HOJA.puertasEnHastiales(g, m, HOJAS.PUERTAS(4));
+  const porNave = Math.round(g.ancho_nave / m.sep_pilares_hastial) - 1;
+  const pilares = [];
+  for (let j = 0; j < g.naves; j++) for (let q = 1; q <= porNave; q++) pilares.push(j * g.ancho_nave + q * g.ancho_nave / (porNave + 1));
+  const libres = lista.every(p => pilares.every(x => x <= p.centro - p.ancho / 2 + 1e-9 || x >= p.centro + p.ancho / 2 - 1e-9));
+  comprobar(`${m.id}: 4 puertas (3 delante, 1 detrás) sin pilares de hastial dentro`, libres && lista.filter(p => p.hastial === 0).length === 3 && lista.length === 4);
+}
+{
+  const m = HOJAS.catalogo.modelos.find(x => x.id === 'MT-GOT-96');
+  const p = HOJA.puertasEnHastiales(HOJAS.GEO.calcular(m, { naves: 1, tramos: 10 }), m, HOJAS.PUERTAS(1))[0];
+  comprobar('MT-GOT-96: la puerta va en el hueco central (4,80 m)', Math.abs(p.centro - 4.8) < 1e-9, `centro ${p.centro}`);
+}
+
+// Norte: gira con la planta (azimut del eje largo θ → norte en el papel a 90° − θ, o 180° − θ si la planta va girada)
+{
+  const m = HOJAS.catalogo.modelos[0];
+  const normal = HOJAS.PLANTA.planta(Object.assign(HOJAS.datos({ g: HOJAS.GEO.calcular(m, { naves: 3, tramos: 11 }), modelo: m }), { orientacion: 30 }));
+  const girada = HOJAS.PLANTA.planta(Object.assign(HOJAS.datos({ g: HOJAS.GEO.calcular(m, { naves: 10, tramos: 10 }), modelo: m }), { orientacion: 30 }));
+  const sin = HOJAS.PLANTA.planta(HOJAS.datos({ g: HOJAS.GEO.calcular(m, { naves: 3, tramos: 11 }), modelo: m }));
+  comprobar('norte a 60° con la planta normal', normal.svg.includes('rotate(60)') && normal.fallos.length === 0);
+  comprobar('norte a 150° con la planta girada', girada.svg.includes('rotate(150)') && girada.fallos.length === 0);
+  comprobar('sin orientación no se dibuja el norte', !sin.cajas.some(c => c.tipo === 'norte'));
+}
 
 // Registro: un texto obligatorio que no cabe queda anotado como fallo
 {

@@ -1,7 +1,8 @@
 // Casos comunes de tests/planos.js y tests/planos_navegador.js:
 // 1/2/5/10 naves × 10/20/60 tramos × los dos modelos del catálogo de ejemplo,
-// en las cuatro hojas. Sección con techo cerrado, una hoja y mariposa;
-// alzado lateral con y sin ventana lateral.
+// en las cuatro hojas (con una puerta de 3 × 3 m). Sección con techo cerrado,
+// una hoja y mariposa; alzado lateral con y sin ventana lateral. Además, casos
+// que fuerzan la interrupción (15 naves) y puertas en los dos hastiales.
 
 const HOJA = require('../js/planos/hoja.js');
 const PLANTA = require('../js/planos/planta.js');
@@ -36,14 +37,28 @@ function casos() {
       }
     }
   }
+  // Fuera de la malla: interrupción de alzados (15 naves) y puertas en los dos hastiales
+  for (const modelo of catalogo.modelos) {
+    const g15 = GEO.calcular(modelo, { naves: 15, tramos: 20 });
+    lista.push({ vista: 'alzadoFrontal', nombre: `alzado frontal ${modelo.id} 15 naves (interrumpido)`, modelo, naves: 15, tramos: 20, g: g15 });
+    lista.push({ vista: 'seccion', nombre: `sección ${modelo.id} 15 naves (interrumpida)`, modelo, naves: 15, tramos: 20, g: g15, ventana: VENTANA(2, g15) });
+    const g2 = GEO.calcular(modelo, { naves: 2, tramos: 20 });
+    lista.push({ vista: 'planta', nombre: `planta ${modelo.id} 2 naves con 3 puertas`, modelo, naves: 2, tramos: 20, g: g2, puertas: PUERTAS(3) });
+    lista.push({ vista: 'alzadoFrontal', nombre: `alzado frontal ${modelo.id} 2 naves con 3 puertas`, modelo, naves: 2, tramos: 20, g: g2, puertas: PUERTAS(3) });
+  }
   return lista;
 }
 
-function generar(caso) {
-  return FUNCION[caso.vista]({
-    g: caso.g, modelo: caso.modelo, empresa: catalogo.empresa, proyecto: PROYECTO, fecha: '28/09/2026',
-    ventana: caso.ventana, lateral: caso.lateral
-  });
-}
+// Puerta del catálogo de ejemplo (3 × 3 m), una por proyecto como en la app por defecto
+const PUERTA = catalogo.equipos.find(e => e.tipo === 'puerta');
+const PUERTAS = (cantidad) => ({ cantidad, ancho: PUERTA.ancho_puerta, alto: PUERTA.alto_puerta });
 
-module.exports = { casos, generar, letra: PLANTA.letra, HOJA };
+function datos(caso) {
+  return {
+    g: caso.g, modelo: caso.modelo, empresa: catalogo.empresa, proyecto: PROYECTO, fecha: '28/09/2026',
+    ventana: caso.ventana, lateral: caso.lateral, puertas: caso.puertas === undefined ? PUERTAS(1) : caso.puertas
+  };
+}
+const generar = (caso) => FUNCION[caso.vista](datos(caso));
+
+module.exports = { casos, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, GEO, catalogo };

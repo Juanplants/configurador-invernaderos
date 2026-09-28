@@ -511,6 +511,8 @@ window.CATALOGO_EJEMPLO = {
       "id": "PUE-3x3",
       "tipo": "puerta",
       "nombre": "Puerta corredera 3,0 × 3,0 m",
+      "ancho_puerta": 3,
+      "alto_puerta": 3,
       "precio": 420,
       "origen": "estimado"
     },

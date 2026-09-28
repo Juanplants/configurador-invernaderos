@@ -3,12 +3,14 @@
 // ============================================================
 // PLANOS_A3.alzadoFrontal(datos) / PLANOS_A3.seccion(datos)
 //   datos: { g, modelo, empresa, proyecto, fecha,
-//            ventana: { lineas: 0|1|2, hoja: m, rendija: m, nombre } }  (solo sección)
-// → { svg, viewBox, escala, cajas, fallos, dibujo }
+//            ventana: { lineas: 0|1|2, hoja: m, rendija: m } (solo sección),
+//            puertas: { cantidad, ancho, alto } (solo alzado frontal) }
+// → { svg, viewBox, escala, cajas, fallos, dibujo, cabe }
 //
-// Con más de 3 naves se dibujan las dos primeras, una interrupción y la
-// última: así el arco se lee a una escala útil. La cota de la interrupción
-// dice cuántas naves faltan y la total conserva su valor real.
+// Encaje: si el invernadero entero cabe a 1:300 o mayor, se dibuja completo.
+// Si no, se interrumpe: las primeras naves, una interrupción y la última, a la
+// mayor escala en la que quepan al menos dos, y tantas como llenen el ancho.
+// La cota de la interrupción dice cuántas naves faltan y la total es la real.
 
 (function (raiz) {
   const H = raiz.HOJA || (typeof require !== 'undefined' && require('./hoja.js'));
@@ -29,17 +31,39 @@
     return 2 * Math.asin(Math.min(ventana.rendija || ventana.hoja, ventana.hoja) / (2 * ventana.hoja));
   }
 
-  function dibujarTransversal(tipo, { g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null }) {
+  const COMPLETO_HASTA = 300; // denominador máximo para dibujar el invernadero entero
+
+  // Naves dibujadas: todas (m = n) o las m − 1 primeras y la última
+  const navesDibujadas = (n, m) => (m >= n ? Array.from({ length: n }, (_, i) => i)
+    : [...Array.from({ length: m - 1 }, (_, i) => i), n - 1]);
+
+  function seleccionar(tipo, datos) {
+    const n = datos.g.naves;
+    const intento = (e, m) => dibujarTransversal(tipo, datos, e, navesDibujadas(n, m));
+    const vale = (h) => h.cabe && !h.fallos.length;
+    for (const e of H.ESCALAS.filter(e => e <= COMPLETO_HASTA)) {
+      const h = intento(e, n);
+      if (vale(h)) return h;
+    }
+    for (const e of H.ESCALAS) {
+      for (let m = n - 1; m >= 2; m--) {
+        const h = intento(e, m);
+        if (vale(h)) return h;
+      }
+    }
+    return H.mejorEscala((e) => intento(e, n)); // último recurso: entero, a la escala que quepa
+  }
+
+  function dibujarTransversal(tipo, { g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null, puertas = null }, escala, mostradas) {
     const seccion = tipo === 'seccion';
     const reg = new H.Registro();
     const partes = [H.fondo()];
     const w = g.ancho_nave, f = g.flecha, hc = g.altura_canal, hm = g.altura_cumbrera;
     const n = g.naves;
 
-    // Naves dibujadas: todas hasta 3; si hay más, 1.ª, 2.ª, interrupción y última
-    const corte = n > 3;
-    const mostradas = corte ? [0, 1, n - 1] : Array.from({ length: n }, (_, i) => i);
-    const textoCorte = corte ? `${n - 3} × ${H.fmtCota(w)}` : '';
+    const corte = mostradas.length < n;
+    const ultima = mostradas.length - 1;          // índice (en mostradas) de la nave tras la interrupción
+    const textoCorte = corte ? `${n - mostradas.length} × ${H.fmtCota(w)}` : '';
     const HUECO = corte ? Math.max(14, H.anchoTexto(textoCorte, 2.5) + 4) : 0;
 
     const disp = {
@@ -49,9 +73,10 @@
       h: DIBUJO.h - BANDA.arriba - BANDA.abajo - 2 * BANDA.margen
     };
     const SUELO_EXTRA = 4; // mm de suelo a cada lado
-    const cabe = (e) => mostradas.length * w * 1000 / e + HUECO + 2 * SUELO_EXTRA <= disp.w && hm * 1000 / e + 3 <= disp.h;
-    const escala = H.ESCALAS.find(cabe) || H.ESCALAS[H.ESCALAS.length - 1];
     const k = 1000 / escala;
+    if (mostradas.length * w * k + HUECO + 2 * SUELO_EXTRA > disp.w || hm * k + 3 > disp.h) {
+      return { cabe: false, fallos: [], escala, dibujo: { naves_dibujadas: mostradas.length } };
+    }
     const Wp = mostradas.length * w * k + HUECO;
     const Hp = hm * k;
     const x0 = disp.x + (disp.w - Wp) / 2;
@@ -59,7 +84,7 @@
     const yCanal = ySuelo - hc * k, yCumbrera = ySuelo - hm * k;
 
     // Origen en papel de cada nave dibujada
-    const origenNave = mostradas.map((_, i) => x0 + i * w * k + (corte && i === 2 ? HUECO : 0));
+    const origenNave = mostradas.map((_, i) => x0 + i * w * k + (corte && i === ultima ? HUECO : 0));
     // Líneas de pilares dibujadas (x en papel) con su índice real (para la letra del eje)
     const lineasPilares = [];
     mostradas.forEach((nave, i) => {
@@ -72,7 +97,7 @@
     // --- Dibujo ---
     const dib = [];
     const tramosSuelo = corte
-      ? [[xL - SUELO_EXTRA, origenNave[1] + w * k], [origenNave[2], xR + SUELO_EXTRA]]
+      ? [[xL - SUELO_EXTRA, origenNave[ultima - 1] + w * k], [origenNave[ultima], xR + SUELO_EXTRA]]
       : [[xL - SUELO_EXTRA, xR + SUELO_EXTRA]];
     for (const [a, b] of tramosSuelo) {
       dib.push(H.linea(a, ySuelo, b, ySuelo, LINEA.contorno));
@@ -100,6 +125,15 @@
           dib.push(`<rect x="${xa + xm * k - anchoPilar * 0.35}" y="${ySuelo - h * k}" width="${anchoPilar * 0.7}" height="${h * k}" fill="#fff" stroke="#000" stroke-width="0.18"/>`);
         }
       }
+    }
+    // Alzado frontal: puertas del hastial frontal en las naves dibujadas
+    const puertasFrente = seccion ? [] : H.puertasEnHastiales(g, modelo, puertas).filter(p => p.hastial === 0);
+    for (const p of puertasFrente) {
+      const i = mostradas.indexOf(p.nave);
+      if (i < 0) continue;
+      const xc = origenNave[i] + (p.centro - p.nave * w) * k;
+      dib.push(`<rect x="${xc - p.ancho * k / 2}" y="${ySuelo - p.alto * k}" width="${p.ancho * k}" height="${p.alto * k}" fill="#e6e6e6" stroke="#000" stroke-width="0.35" data-puerta="0-${p.nave}"/>`);
+      dib.push(H.linea(xc, ySuelo - p.alto * k, xc, ySuelo, 0.18));
     }
     // Sección: ventanas cenitales (cerrada sobre el arco y abierta a trazos)
     const alfa = seccion ? apertura(ventana) : 0;
@@ -129,7 +163,7 @@
     }
     // Interrupción
     if (corte) {
-      const xc = origenNave[1] + w * k + HUECO / 2;
+      const xc = origenNave[ultima - 1] + w * k + HUECO / 2;
       const z = [[xc, yCumbrera - 3], [xc, (yCumbrera + ySuelo) / 2 - 1.5], [xc - 1.5, (yCumbrera + ySuelo) / 2 - 0.5],
                  [xc + 1.5, (yCumbrera + ySuelo) / 2 + 0.5], [xc, (yCumbrera + ySuelo) / 2 + 1.5], [xc, ySuelo + 3]];
       dib.push(`<polyline points="${z.map(p => p.join(',')).join(' ')}" fill="none" stroke="#000" stroke-width="${LINEA.cota}"/>`);
@@ -148,8 +182,8 @@
     const abajo = huella.y + huella.h;
     partes.push(H.cadena(reg, { eje: 'h', posiciones: [xs[0], xs[xs.length - 1]], valores: [g.ancho_total], textos: [H.fmtCota(g.ancho_total)], origen: abajo, linea: abajo + COTA_2, limite: DIBUJO, nombre: 'ancho total' }));
     if (xs.length > 2) {
-      const vanos = xs.slice(1).map((x, i) => (corte && i === 2 ? (n - 3) * w : w));
-      const textos = corte ? vanos.map((v, i) => (i === 2 ? textoCorte : H.fmtCota(v))) : undefined;
+      const vanos = xs.slice(1).map((x, i) => (corte && i === ultima ? (n - mostradas.length) * w : w));
+      const textos = corte ? vanos.map((v, i) => (i === ultima ? textoCorte : H.fmtCota(v))) : undefined;
       partes.push(H.cadena(reg, { eje: 'h', posiciones: xs, valores: vanos, textos, origen: abajo, linea: abajo + COTA_1, limite: DIBUJO, nombre: 'naves' }));
     }
     const izq = xL - SUELO_EXTRA;
@@ -172,7 +206,7 @@
       notas.push(nota);
     }
     notas.push('Arco: parábola de luz igual al ancho de nave y flecha del catálogo.');
-    if (corte) notas.push(`Se dibujan 3 de las ${n} naves; la interrupción no está a escala.`);
+    if (corte) notas.push(`Se dibujan ${mostradas.length} de las ${n} naves; la interrupción no está a escala.`);
 
     const simbolos = seccion
       ? [[`<rect x="-0.5" y="-1" width="1" height="2" fill="#000"/>`, 'Pilar'],
@@ -184,7 +218,12 @@
       : [[`<rect x="-0.5" y="-1" width="1" height="2" fill="#000"/>`, 'Pilar'],
          [`<rect x="-0.35" y="-1" width="0.7" height="2" fill="#fff" stroke="#000" stroke-width="0.18"/>`, 'Pilar de hastial'],
          [H.linea(-4, 0, 4, 0, LINEA.contorno), 'Arco'],
-         [H.linea(-4, 0, 4, 0, LINEA.eje, 'stroke-dasharray="4 1 0.6 1"'), 'Eje']];
+         [H.linea(-4, 0, 4, 0, LINEA.eje, 'stroke-dasharray="4 1 0.6 1"'), 'Eje'],
+         ...(puertasFrente.length ? [[`<rect x="-2" y="-1" width="4" height="2" fill="#e6e6e6" stroke="#000" stroke-width="0.35"/>`, 'Puerta corredera']] : [])];
+    if (puertasFrente.length) {
+      const p = puertasFrente[0];
+      notas.push(`Puertas en este frontal: ${puertasFrente.length} de ${H.fmtCota(p.ancho)} × ${H.fmtCota(p.alto)} m${p.entrePilares ? ', entre pilares de hastial' : ''}.`);
+    }
     partes.push(H.hojaBase(reg, {
       escala, g, modelo, empresa, proyecto, fecha, simbolos, notas,
       titulo: seccion ? 'SECCIÓN TRANSVERSAL' : 'ALZADO FRONTAL', numero: seccion ? '04' : '02'
@@ -192,14 +231,16 @@
 
     return {
       svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`,
-      escala, cajas: reg.cajas, fallos: reg.fallos,
-      dibujo: { x: xL, y: yCumbrera, w: Wp, h: Hp, disponible: disp, corte, naves_dibujadas: mostradas.length, hueco: HUECO, apertura: alfa }
+      escala, cajas: reg.cajas, fallos: reg.fallos, cabe: true,
+      dibujo: { x: xL, y: yCumbrera, w: Wp, h: Hp, disponible: disp, corte, naves_dibujadas: mostradas.length, hueco: HUECO, apertura: alfa,
+                puertas: puertasFrente.filter(p => mostradas.includes(p.nave)).length }
     };
   }
 
   const API = {
-    alzadoFrontal: (datos) => dibujarTransversal('frontal', datos),
-    seccion: (datos) => dibujarTransversal('seccion', datos),
+    alzadoFrontal: (datos) => seleccionar('frontal', datos),
+    seccion: (datos) => seleccionar('seccion', datos),
+    dibujarTransversal, navesDibujadas, COMPLETO_HASTA,
     apertura
   };
   raiz.PLANOS_A3 = Object.assign(raiz.PLANOS_A3 || {}, API);

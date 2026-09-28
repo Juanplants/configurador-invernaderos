@@ -23,6 +23,8 @@
   const FILA_DATOS = 6;
   // Columnas que se guardan como número aunque vengan como texto ("1,4")
   const NUMERICAS = ['precio', 'precio_unitario', 'movilizacion', 'montaje', 'hoyos_y_dados'];
+  // Medidas que se pasan a número si vienen como texto; si no son número, las rechaza el validador
+  const MEDIDAS_TEXTO = ['ancho_puerta', 'alto_puerta'];
   const MEDIDAS = {
     anchos_de_nave_admitidos: 'anchos de nave admitidos',
     separaciones_entre_porticos: 'separaciones entre pórticos',
@@ -76,6 +78,9 @@
             texto: `"${d[k]}" no es un número: se trata como sin precio` });
           delete d[k];
         }
+      }
+      for (const k of MEDIDAS_TEXTO) {
+        if (typeof d[k] === 'string' && Number.isFinite(aNumero(d[k]))) d[k] = aNumero(d[k]);
       }
       datos.push(d);
       filas.push(r + 1);
@@ -169,6 +174,16 @@
     // Perfiles: el peso es imprescindible para pasar de metros a kg
     (cat.perfiles || []).forEach((p, i) => {
       if (typeof p.peso !== 'number' || !(p.peso > 0)) error('perfiles', i, 'peso', 'numero', `Perfil ${p.id}: peso (kg/m) vacío o no numérico`);
+    });
+
+    // Puertas: medidas para dibujarlas en planta y alzado frontal
+    (cat.equipos || []).forEach((e, i) => {
+      if (e.tipo !== 'puerta') return;
+      for (const campo of ['ancho_puerta', 'alto_puerta']) {
+        const nombre = (meta.equipos && meta.equipos.titulos[campo]) || campo;
+        if (vacio(e[campo])) aviso('equipos', i, campo, 'puerta', `Puerta ${e.id}: sin ${nombre.toLowerCase()}; no se dibujará en los planos`);
+        else if (typeof e[campo] !== 'number' || !(e[campo] > 0)) error('equipos', i, campo, 'numero', `Puerta ${e.id}: ${nombre.toLowerCase()} "${e[campo]}" no es una medida válida (m)`);
+      }
     });
 
     // Variables de las reglas, con un proyecto de prueba de cada modelo
