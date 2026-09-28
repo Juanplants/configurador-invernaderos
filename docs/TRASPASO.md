@@ -13,8 +13,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | Ruta | Qué es |
 | --- | --- |
 | `index.html`, `styles.css`, `js/app.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**, en **6 pasos** con el plano siempre a la derecha. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
-| `js/sitio.js` | **Cargas del sitio por municipio** (CTE DB SE-AE): lee y valida la tabla de municipios, busca por nombre y por la refcat de rústica, calcula vb, ce, qe y la nieve interpolada |
-| `datos/cte_se_ae.json`, `datos/municipios_cte.csv` → `datos/municipios.js` | Normativa (viento y categorías transcritos, **pendientes de contrastar**; tabla E.2 de nieve **pendiente**) y tabla de municipios (**vacía** hasta tener la oficial). Formato en `datos/LEEME_municipios.md`; se juntan con `node herramientas/municipios_a_js.js` |
+| `js/sitio.js` | **Cargas del sitio** (CTE DB SE-AE): vb, ce, qe; nieve de la tabla E.2 interpolada o «fuera de tabla»; capitales (tabla 3.8); tabla de municipios opcional (lectura, validación, búsqueda, refcat de rústica) |
+| `datos/cte_se_ae.json`, `datos/municipios_cte.csv` → `datos/municipios.js` | Normativa del CTE DB SE-AE (viento, categorías de terreno, tablas E.2 y 3.8) y tabla de municipios opcional (vacía). Formato en `datos/LEEME_municipios.md`; se juntan con `node herramientas/municipios_a_js.js` |
 | `js/pasos.js` | Lógica del flujo de 6 pasos (paso actual, visitados, Anterior/Siguiente, saltar a un visitado) |
 | `js/planos/hoja.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas, rótulos, leyenda y cajetín comunes, perfil del arco |
 | `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento |
@@ -38,8 +38,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (225 hojas, 17 sobre parcela real: norte-sur, este-oeste, oblicuo a 35° y 125°, con hueco, sin camino, casi llena, no cabe, no cumple) |
 | `tests/pasos.js` | Lógica del flujo (16): orden y nombres = apartado 2 de la especificación, avanzar, retroceder, saltar solo a visitados, abrir proyecto |
 | `tests/pasos_navegador.js` | El flujo en la app sin conexión (76): un paso a la vez, barra, Anterior/Siguiente, el plano visible en todos, **cada control en su paso y funcionando**, resumen corto, marca de avisos, aptitud por modelo, abrir proyecto (se omite sin Playwright) |
-| `tests/sitio.js` | Cargas del sitio (53): lectura y errores de la tabla, normativa, vb/ce/nieve, búsqueda y refcat, apto / al límite / no apto y nieve sin dato, propuesta, proyecto, herramienta de conversión. Con municipios y nieve **inventados** (`tests/datos/municipios_prueba.csv`, `tests/datos/cte_prueba.json`) |
-| `tests/sitio_navegador.js` | El paso 2 en Chromium con la tabla de prueba inyectada (31): municipio → viento y nieve, manuales, categoría, pendiente, municipio desde la parcela de rústica, propuesta, guardar/abrir; y sin tabla, a mano (se omite sin Playwright) |
+| `tests/sitio.js` | Cargas del sitio (79): normativa (valores oficiales, huecos de la E.2, capitales coherentes con la E.2), vb/ce, nieve interpolada y fuera de tabla, capitales, apto / al límite / no apto, sin dato y fuera de tabla, propuesta, proyecto, herramienta, columna del catálogo; tabla de municipios opcional con municipios **inventados** (`tests/datos/municipios_prueba.csv`) |
+| `tests/sitio_navegador.js` | El paso 2 en Chromium (38): zonas y altitud → viento y nieve, fuera de tabla, capital, manuales, categoría, pendiente, propuesta, guardar/abrir; con una tabla de municipios inventada inyectada, municipio y parcela de rústica (se omite sin Playwright) |
 | `tests/navegador_pasos.js` | Ayuda de las pruebas en Chromium: ir a un paso como lo haría el usuario |
 | `tests/terreno.js` | Pruebas del terreno y el optimizador (104): GML = KML, UTM contra pyproj, huecos, varios recintos, sistemas y archivos malos; distancia a linderos; pesos = especificación; cada candidata cumple la holgura; cada medida con todas las ventanas cenitales; ninguna de las 3 en rojo de ventilación (y, sin mariposa en el catálogo, las rojas al final con aviso); la mejor de cada modelo + ventana; orientación preferida; misma orientación en croquis y plano; óptimo analítico en una parcela rectangular; un solo criterio → la mejor en ese criterio |
 | `tests/terreno_navegador.js` | En la app sin conexión (60): cargar GML/KML, las 3 mejores = optimizador en node, ventana y aviso en las tarjetas, elegir (también la ventana), misma orientación en tarjeta y plano, orientación preferida este-oeste, planos y PDF, guardar/abrir con parcela, rectángulo a mano (se omite sin Playwright) |
@@ -125,13 +125,24 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Siempre a la vista**: el plano con sus pestañas (derecha, fijo al desplazar) y, encima del paso, un resumen de una línea (modelo, medidas, m², €/m², total y nº de avisos). La marca de «Revisión» en la barra cuenta los avisos rojos y ámbar.
 - Los identificadores de los controles no cambian: el resto del código y las pruebas siguen valiendo; las pruebas en Chromium van al paso de cada control con `tests/navegador_pasos.js`.
 
-## Viento y nieve por municipio (paso 2)
+## Viento y nieve del sitio (paso 2)
 
-- **Datos**: ver `datos/LEEME_municipios.md`. Desde este entorno no se pudieron descargar las fuentes oficiales (la red deniega codigotecnico.org, ine.es e ign.es), así que la tabla de municipios está **vacía** y la tabla E.2 de nieve **pendiente**; el viento por zona (A 26, B 27, C 29 m/s; qb 0,42 / 0,45 / 0,52 kN/m²) y las categorías de terreno (k, L, Z) están transcritos a mano y marcados para contrastar. Sin tabla, la app pide viento y nieve a mano como antes.
-- **Municipio** (paso 2): lista con búsqueda (sin tildes ni mayúsculas; si el nombre se repite en dos provincias hay que elegir la etiqueta «Nombre (Provincia)»). Al elegirlo se rellenan viento (vb en km/h) y nieve (sk de la tabla E.2 por zona de invierno y altitud, interpolada, en kg/m²) marcados «del municipio». Si se escriben a mano quedan marcados «manual» y no se pisan; «Usar los valores del municipio» los devuelve. La parcela del Catastro de **rústica** (refcat de 20 caracteres) trae el municipio: provincia + municipio del Catastro, columna `codigo_catastro`.
-- **Categoría de terreno** (I a V, con su explicación) y **pendiente** (%): la categoría da ce a la altura de cumbrera y qe = qb · ce, informativos; la comparación con el fabricante usa vb, como el viento manual de antes. Decisión a revisar si se quiere comparar con la velocidad de pico.
-- **Aptitud** de cada modelo (viento y nieve, apto / al límite / no apto, margen 10 %). Si el fabricante no declara nieve (vacío o 0) y el sitio tiene, el resultado es «sin dato» (no cuenta como apto ni como no apto) y sale un aviso ámbar.
-- **Propuesta**: tabla «Cargas del sitio frente a las declaradas por el fabricante» (sitio con su origen, declarada con asterisco si es estimada, resultado) y la nota de que no sustituye al cálculo estructural; municipio, zonas, categoría y pendiente.
+- **El CTE no tiene tabla por municipio**: la zona eólica (fig. D.1) y la zona de clima invernal (fig. E.2) solo vienen en mapas. En el paso 2 el usuario elige zona eólica (A/B/C), zona invernal (1–7) y altitud, con la nota «consulta las figuras D.1 y E.2 del CTE DB SE-AE». Atajo: las capitales de la tabla 3.8, que dan la altitud y la nieve.
+- **Datos** (`datos/cte_se_ae.json`, ver `datos/LEEME_municipios.md`):
+  - viento (vb 26/27/29 m/s, qb 0,42/0,45/0,52 kN/m²) y categorías de terreno (k, L, Z), contrastados por el usuario con el documento oficial;
+  - tablas E.2 y 3.8, extraídas del PDF oficial por el usuario, sin contrastar desde este entorno (la red no llega a codigotecnico.org). Una comprobación cruzada (`tests/sitio.js`) confirma que cada capital de la 3.8 coincide con la E.2 de alguna zona a ±0,1 kN/m²; con ±0,05 solo Ciudad Real (0,6 frente a 0,54) y Cuenca (1,0 frente a 0,9 o 1,24) no cuadran, a mirar en el PDF.
+- **Viento**: vb de la zona en km/h, comparado con el viento declarado con el invernadero cerrado (decisión confirmada). ce de la categoría a la altura de cumbrera y qe = qb · ce, informativos.
+- **Nieve**:
+  - con capital, sk de la tabla 3.8;
+  - si no, tabla E.2 por zona invernal y altitud, con interpolación lineal entre las altitudes con dato de la zona;
+  - por encima de la última con dato, **«fuera de tabla, requiere estudio»**: no se compara y sale un aviso ámbar; en la propuesta, «Requiere estudio»;
+  - si el fabricante no declara nieve (vacío o 0), «sin dato», con aviso (decisión confirmada).
+- **Valores a mano**: marcados «manual»; «Usar los valores del CTE» los devuelve. Elegir una zona, una capital o la altitud vuelve a usar el CTE para esa carga.
+- **Categoría de terreno** (I a V, con su explicación) y **pendiente** (%).
+- **Aptitud** de cada modelo: viento y nieve, apto / al límite / no apto, margen del 10 %.
+- **Propuesta**: tabla «Cargas del sitio frente a las declaradas por el fabricante», con el origen de cada valor y la nota de que no sustituye al cálculo estructural.
+- **Tabla de municipios** (`datos/municipios_cte.csv`): se mantiene el formato por si algún día hay una fiable; vacía no se muestra. Con tabla, el municipio (o la parcela del Catastro de rústica) rellena zonas y altitud.
+- **Catálogo**: nueva columna «Base del viento declarado» en la hoja Modelos (velocidad media, ráfaga o presión kN/m²; lista desplegable, validada al importar), vacía hasta que la den los fabricantes.
 
 ## Salidas (fase 5)
 
