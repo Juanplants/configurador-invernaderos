@@ -148,27 +148,25 @@ const PROPUESTA = {
 
   _planos(planos) {
     if (!planos) return '';
-    const pagina = (titulo, svgContent) => `
+    const svg = (p) => `<svg viewBox="${p.viewBox}" xmlns="http://www.w3.org/2000/svg">${p.svg}</svg>`;
+    const pagina = (titulo, p) => `
       <section class="page planos-page">
         <h3>${titulo}</h3>
-        <div class="plano-wrap">
-          <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>
-        </div>
+        <div class="plano-wrap">${svg(p)}</div>
       </section>
     `;
     return `
       <section class="page">
         <h3>1.3 Planos del proyecto</h3>
         <p>
-          A continuación se incluyen los planos del invernadero con las cuatro
-          vistas principales: planta general, alzado frontal, alzado lateral y
-          sección transversal. Todas las cotas están expresadas en metros.
-          Las vistas son orientativas y no contractuales.
+          A continuación se incluyen los planos del invernadero: planta general,
+          alzado frontal, alzado lateral y sección transversal. Todas las cotas
+          están expresadas en metros. La planta está dibujada a escala sobre A3
+          (1:${planos.planta.escala}); reducida en este documento, la escala
+          válida es la gráfica. Las vistas son orientativas y no contractuales.
         </p>
         <h4>Planta general</h4>
-        <div class="plano-wrap">
-          <svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg">${planos.planta}</svg>
-        </div>
+        <div class="plano-wrap">${svg(planos.planta)}</div>
       </section>
       ${pagina('Alzado frontal', planos.alzadoFrontal)}
       ${pagina('Alzado lateral', planos.alzadoLateral)}
