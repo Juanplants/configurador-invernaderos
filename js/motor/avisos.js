@@ -22,9 +22,11 @@
       return 'apto';
     };
     const viento = comprobar(sitio.viento_kmh, modelo.viento_cerrado);
-    const nieve = (sitio.nieve || 0) > 0 ? comprobar(sitio.nieve, modelo.nieve) : 'apto';
+    // Nieve: si el sitio tiene y el fabricante no declara ninguna (vacío o 0), no se
+    // puede comparar: «sin_dato», con aviso, en vez de dar por buena o mala la carga
+    const nieve = !((sitio.nieve || 0) > 0) ? 'apto' : (modelo.nieve > 0 ? comprobar(sitio.nieve, modelo.nieve) : 'sin_dato');
     const orden = ['apto', 'al_limite', 'no_apto'];
-    const resultado = orden[Math.max(orden.indexOf(viento), orden.indexOf(nieve))];
+    const resultado = orden[Math.max(orden.indexOf(viento), orden.indexOf(nieve === 'sin_dato' ? 'apto' : nieve))];
     return { resultado, viento, nieve };
   }
 
@@ -51,6 +53,9 @@
     if (apto && apto.resultado !== 'apto') {
       avisos.push({ nivel: apto.resultado === 'no_apto' ? 'rojo' : 'ambar', codigo: 'emplazamiento',
         texto: apto.resultado === 'no_apto' ? 'El modelo no alcanza las cargas del emplazamiento: requiere cálculo específico' : 'El modelo va al límite de las cargas del emplazamiento' });
+    }
+    if (apto && apto.nieve === 'sin_dato') {
+      avisos.push({ nivel: 'ambar', codigo: 'nieve_sin_dato', texto: `El sitio tiene ${Math.round(proyecto.sitio.nieve)} kg/m² de nieve y el modelo no declara carga de nieve: pedir el dato al fabricante` });
     }
     for (const l of lineas.filter(l => l.importe === null || l.importe === undefined)) {
       avisos.push({ nivel: 'ambar', codigo: 'sin_precio', texto: `${l.nombre}: sin precio en el catálogo` });
