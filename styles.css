@@ -613,3 +613,4 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 /* Descarga de planos */
 .plan-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 2px 2px; }
 .plan-acciones .hint { margin: 0; }
+.acciones-materiales { display: inline-flex; gap: 6px; }

@@ -445,7 +445,10 @@ function renderMateriales({ r }) {
 
   document.getElementById('materiales').innerHTML = `
     <h3>Lista de materiales
-      <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
+      <span class="acciones-materiales">
+        <button id="btn-excel" class="btn-secundario">&#11015; Excel</button>
+        <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
+      </span>
     </h3>
     <table class="tabla-materiales">
       <tr><th>Partida</th>${ver ? '<th>Cálculo</th>' : ''}<th class="n">Cantidad</th><th class="n">kg</th><th class="n">Precio u.</th><th class="n">Importe</th></tr>
@@ -515,6 +518,17 @@ function renderPlano({ r }) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.vista === state.vistaActual);
   });
+}
+
+// ------- Lista de materiales en Excel -------
+function descargarExcel() {
+  const { r, modelo, error } = calcularTodo();
+  if (error) return;
+  EXCEL.descargar(XLSX, {
+    r, catalogo: CATALOGO, modelo,
+    proyecto: { codigo: state.codigoProyecto, cliente: state.cliente, ubicacion: state.ubicacion },
+    fecha: new Date().toLocaleDateString('es-ES')
+  }, EXPORTAR.nombreArchivo(state.codigoProyecto, 'materiales', new Date(), 'xlsx'));
 }
 
 // ------- Planos en PDF -------
@@ -609,6 +623,7 @@ function bindEvents() {
     });
   });
   document.getElementById('materiales').addEventListener('click', e => {
+    if (e.target.id === 'btn-excel') descargarExcel();
     if (e.target.id === 'btn-ver-calculo') {
       state.verCalculo = !state.verCalculo;
       render();

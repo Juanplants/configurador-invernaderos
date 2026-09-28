@@ -3,9 +3,14 @@
 // ============================================================
 // Ejecutar:  node tests/salidas.js
 // 1. Guardar y abrir proyecto: ida y vuelta, catálogo distinto, archivos malos.
+// 2. Lista de materiales en Excel: se escribe, se relee y se compara con el motor;
+//    la hoja de petición de oferta no lleva ningún precio.
 // (tests/salidas_navegador.js repite las tres salidas en la app real.)
 
 const PROYECTO = require('../js/proyecto.js');
+const EXCEL = require('../js/excel.js');
+const MOTOR = require('../js/motor/motor.js');
+const XLSX = require('../lib/xlsx.mini.min.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
 
 let fallos = 0, ok = 0;
@@ -72,6 +77,54 @@ console.log('1. Guardar y abrir proyecto');
   comprobar('versión más nueva', PROYECTO.leer(Object.assign(copia(archivo), { version: 99 }), catalogo).errores[0].includes('más nueva'));
   const malo = copia(archivo); malo.proyecto.naves = 'tres';
   comprobar('tipo incorrecto', PROYECTO.leer(malo, catalogo).errores.some(e => e.includes('naves')));
+}
+
+console.log('2. Lista de materiales en Excel');
+{
+  // Con obra local, ventana mariposa y el motor con un origen distinto de «estimado» (tienda)
+  const r = MOTOR.calcular(catalogo, { modelo: 'MT-GOT-96', naves: 6, tramos: 22, altura_canal: 4.5, puertas: 2, zona: 'Almería', seleccion: { ventilacion_cenital: 'C21' } });
+  const modelo = catalogo.modelos.find(m => m.id === 'MT-GOT-96');
+  const wb = EXCEL.libro(XLSX, { r, catalogo, modelo, proyecto: { codigo: '26JD001', cliente: 'Finca La Prueba' }, fecha: '28/09/2026' });
+  const leido = XLSX.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { cellNF: true });
+  comprobar('dos hojas: Materiales y Petición de oferta', JSON.stringify(leido.SheetNames) === '["Materiales","Petición de oferta"]', JSON.stringify(leido.SheetNames));
+
+  const M = leido.Sheets.Materiales;
+  const filas = XLSX.utils.sheet_to_json(M, { header: 1, defval: '' });
+  const iCab = filas.findIndex(f => f[0] === 'Categoría');
+  comprobar('columnas de la lista', iCab > 0 && JSON.stringify(filas[iCab]) === JSON.stringify(['Categoría', 'Partida', 'Referencia', 'Cantidad', 'Unidad', 'kg', 'Precio unitario', 'Importe', 'Origen', 'Cálculo']));
+  const lineas = filas.slice(iCab + 1, iCab + 1 + r.lineas.length);
+  const cerca = (a, b, t = 0.006) => Math.abs(a - b) <= t;
+  const malas = r.lineas.filter((l, i) => {
+    const f = lineas[i];
+    return f[1] !== l.nombre || !cerca(f[3], l.cantidad, 1e-9) || (l.importe != null && !cerca(f[7], l.importe))
+      || f[8] !== l.origen || f[9] !== l.traza.calculo;
+  });
+  comprobar(`una fila por partida con cantidad, importe, origen y cálculo (${r.lineas.length})`, malas.length === 0, malas.map(l => l.id).join(', '));
+  const suma = lineas.reduce((t, f) => t + (typeof f[7] === 'number' ? f[7] : 0), 0);
+  comprobar('los importes suman los materiales', cerca(suma, r.precio.materiales, 0.01 * r.lineas.length), `${suma} vs ${r.precio.materiales}`);
+  const total = filas.find(f => f[1] === 'Total');
+  comprobar('total con IVA', total && cerca(total[7], r.precio.total), JSON.stringify(total));
+  comprobar('obra local desglosada', filas.some(f => String(f[1]).startsWith('Obra local') && f[8] === r.precio.obra.origen));
+  comprobar('orígenes del catálogo (estimado y tienda)', lineas.some(f => f[8] === 'estimado') && lineas.some(f => f[8] === 'tienda'));
+  const celdaImporte = M[XLSX.utils.encode_cell({ r: iCab + 1, c: 7 })];
+  comprobar('importes con formato de euros', celdaImporte && /€/.test(celdaImporte.z || ''), celdaImporte && celdaImporte.z);
+  comprobar('aviso de valores estimados en la cabecera', filas.slice(0, iCab).some(f => String(f[0]).includes('estimado')));
+
+  const O = leido.Sheets['Petición de oferta'];
+  const oferta = XLSX.utils.sheet_to_json(O, { header: 1, defval: '' });
+  const iCabO = oferta.findIndex(f => f[0] === 'Partida / Item');
+  const cuerpo = oferta.slice(iCabO + 1);
+  comprobar('petición de oferta: una fila por partida', cuerpo.length === r.lineas.length, `${cuerpo.length}`);
+  comprobar('petición de oferta: columna de precio vacía', cuerpo.every(f => f[8] === ''));
+  const conFormatoEuro = Object.keys(O).filter(k => k[0] !== '!' && /€/.test(O[k].z || ''));
+  comprobar('petición de oferta: ninguna celda con formato de euros', conFormatoEuro.length === 0, conFormatoEuro.join(','));
+  const importes = new Set([r.precio.materiales, r.precio.base_imponible, r.precio.total, ...r.lineas.map(l => l.importe)].filter(v => v).map(v => Math.round(v * 100) / 100));
+  const numeros = oferta.flat().filter(v => typeof v === 'number');
+  comprobar('petición de oferta: no aparece ningún importe', !numeros.some(v => importes.has(Math.round(v * 100) / 100) && v > 100), numeros.filter(v => importes.has(v)).join(','));
+  comprobar('petición de oferta: textos en español e inglés', oferta[0][0].includes('Request for quotation') && oferta[iCabO].every(t => t === '' || t.includes(' / ')));
+  const pilar = cuerpo.find(f => f[1] === 'PIL-120x60');
+  comprobar('petición de oferta: especificación del perfil desde el catálogo', pilar && pilar[3].includes('120×60') && pilar[3].includes('Q235'), pilar && pilar[3]);
+  comprobar('petición de oferta: datos del invernadero', oferta.some(f => f[0] === 'Naves / Spans' && f[1] === 6));
 }
 
 console.log(`\n${ok} comprobaciones correctas, ${fallos} fallos`);
