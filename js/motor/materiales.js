@@ -9,6 +9,8 @@
   const EXPR = raiz.MOTOR?.expresiones || (typeof require !== 'undefined' && require('./expresiones.js'));
 
   const r1 = (x) => Math.round(x * 10) / 10;
+  // Sin precio (vacío o no numérico) → importe null y aviso «sin precio», nunca NaN
+  const conPrecio = (p) => typeof p === 'number' && Number.isFinite(p);
 
   // "A|B" → variante según la posición del modelo en la columna Modelos
   function variante(valor, idx) {
@@ -103,14 +105,15 @@
         linea.kg = base * ref.fila.peso;
         linea.cantidad = linea.kg;
         linea.precio_unitario = ref.fila.precio;
-        linea.importe = ref.fila.unidad_precio === 'm' ? linea.metros * ref.fila.precio : linea.kg * ref.fila.precio;
+        linea.importe = !conPrecio(ref.fila.precio) ? null
+          : ref.fila.unidad_precio === 'm' ? linea.metros * ref.fila.precio : linea.kg * ref.fila.precio;
         traza.calculo += ` = ${r1(base)} m × ${ref.fila.peso} kg/m`;
       } else {
         linea.cantidad = (c.unidad === 'ud') ? Math.ceil(base - 1e-9) : base;
         if (c.unidad === 'kg') linea.kg = linea.cantidad;
         const precio = (ref && ref.fila.precio !== undefined) ? ref.fila.precio : c.precio_unitario;
         linea.precio_unitario = precio;
-        linea.importe = (precio !== undefined && precio !== null && precio !== '') ? linea.cantidad * precio : null;
+        linea.importe = conPrecio(precio) ? linea.cantidad * precio : null;
       }
       lineas.push(linea);
     }
