@@ -90,6 +90,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Alzado lateral:** ventana cenital del 2.º al penúltimo pórtico (`long_ventana_cenital`) y ventana lateral si la hay (posición orientativa). Sus rótulos son opcionales: con 60 tramos a 1:1000 las burbujas no dejan paso; el dato va siempre en las notas.
 - **PDF** (`js/exportar.js`): «Descargar planos (PDF A3)» genera un PDF con todas las hojas y «Esta hoja (PDF)» la pestaña actual; nombre `<código>_planos_<AAAA-MM-DD>.pdf` o `<código>_<nº>-<hoja>_<AAAA-MM-DD>.pdf`. Cada hoja es una página A3 apaisada con el SVG en mm 1:1 (vectorial, Helvetica); impresa en A3 «al 100 % / tamaño real» la escala del cajetín es exacta; el PDF pide al visor no reescalar.
 - **En espera de datos del fabricante:** detalles constructivos y cimentación (no empezar hasta tenerlos).
+- **Estética (pendiente, no implementado):** en los alzados sobra espacio vertical por la forma alargada del invernadero. Cuando se retoquen los planos, valorar juntar alzado frontal y sección transversal en una misma hoja A3.
 
 ## Siguientes pasos (en orden)
 
