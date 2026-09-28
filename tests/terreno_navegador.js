@@ -15,6 +15,7 @@ const os = require('os');
 const zlib = require('zlib');
 const PAR = require('../js/terreno/parcela.js');
 const OPT = require('../js/terreno/optimizador.js');
+const CROQUIS = require('../js/terreno/croquis.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
 
 let chromium;
@@ -94,9 +95,11 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   // La pantalla lleva la selección y la zona por defecto del catálogo; se comparan medidas y superficie
   ref.mejores.forEach((c, i) => {
     const t = tarjetas[i] || '';
-    comprobar(`tarjeta ${i + 1}: ${c.modelo.nombre} ${c.naves} × ${c.tramos}`, t.includes(c.modelo.nombre) && t.includes(`${c.naves} × ${c.tramos}`) && t.includes(`${Math.round(c.area).toLocaleString('es-ES')} m²`), t.replace(/\n/g, ' | '));
-    for (const k of ['Superficie', 'Precio', 'Ventilación', 'Orientación']) comprobar(`tarjeta ${i + 1}: muestra ${k}`, t.includes(k));
+    comprobar(`tarjeta ${i + 1}: ${c.modelo.nombre} ${c.ventana.nombre} ${c.naves} × ${c.tramos}`, t.includes(c.modelo.nombre) && t.includes(c.ventana.nombre) && t.includes(`${c.naves} × ${c.tramos}`) && t.includes(`${Math.round(c.area).toLocaleString('es-ES')} m²`), t.replace(/\n/g, ' | '));
+    for (const k of ['Superficie', 'Precio', 'Ventilación', 'Orientación', 'Ventana cenital']) comprobar(`tarjeta ${i + 1}: muestra ${k}`, t.includes(k));
   });
+  comprobar('ninguna tarjeta en rojo de ventilación', await p.locator('.candidata.en-rojo').count() === 0);
+  comprobar('3 tarjetas distintas en modelo o ventana', new Set(tarjetas.map(t => t.split('\n').slice(0, 1).join() + '|' + (t.match(/Ventana cenital\s+(.+)/) || [])[1])).size === 3);
   comprobar('cabecera con el perfil y sus pesos', (await p.locator('#optimizador h3').innerText()).includes('Equilibrado: coste 40 %'));
   await p.selectOption('#perfil', 'clima');
   await p.waitForFunction(() => document.querySelector('#optimizador h3') && document.querySelector('#optimizador h3').innerText.includes('Clima'), null, { timeout: 30000 });
@@ -109,6 +112,7 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   await p.click('[data-elegir="1"]');
   comprobar('rellena modelo, naves y tramos', await p.inputValue('#model-select') === c.modelo.id && +(await p.inputValue('#num-naves')) === c.naves && +(await p.inputValue('#num-tramos')) === c.tramos,
     `${await p.inputValue('#model-select')} ${await p.inputValue('#num-naves')} × ${await p.inputValue('#num-tramos')}`);
+  comprobar('rellena la ventana cenital', await p.inputValue('[data-grupo="ventilacion_cenital"]') === c.ventana.id, await p.inputValue('[data-grupo="ventilacion_cenital"]'));
   comprobar('rellena ancho de nave y separación', Math.abs(+(await p.inputValue('#ancho-nave')) - c.ancho_nave) < 1e-9 && Math.abs(+(await p.inputValue('#separacion')) - c.separacion) < 1e-9);
   comprobar('tarjeta marcada como elegida', (await p.locator('.candidata.elegida').count()) === 1 && (await p.locator('.candidata.elegida').innerText()).includes('Elegida'));
   const resumen = await p.locator('.summary-grid').innerText();
@@ -118,6 +122,13 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   const dist = elegido.match(/Distancia mínima al lindero ([\d.,]+) m \(exigida 4,00 m\)/);
   comprobar('plano: distancia mínima exigida cumplida', dist && numero(dist[1]) >= 4, dist && dist[0]);
   comprobar('plano: medidas del invernadero elegido', elegido.includes(`${c.naves} × `) && !elegido.includes('NO CABE') && !elegido.includes('NO CUMPLE'));
+  // Misma orientación en el croquis de la tarjeta y en el plano (norte arriba en los dos)
+  const anguloCroquis = CROQUIS.anguloInvernadero(await p.locator('.candidata.elegida svg.croquis').evaluate(el => el.outerHTML));
+  const anguloPlano = CROQUIS.anguloInvernadero(elegido);
+  const giroHoja = +((elegido.match(/rotate\((\d+(?:\.\d+)?)\)"><path d="M0,-5/) || [])[1] || 0);
+  const dif = ((anguloPlano - giroHoja - anguloCroquis) % 180 + 180) % 180;
+  comprobar('croquis y plano: el invernadero con la misma orientación', Math.min(dif, 180 - dif) < 0.01, `croquis ${anguloCroquis}°, plano ${anguloPlano}°, hoja ${giroHoja}°`);
+  comprobar('plano: norte arriba (hoja sin girar)', giroHoja === 0);
   // La planta lleva el norte de la implantación
   await p.click('.tab[data-vista="planta"]');
   comprobar('la planta dibuja el norte', (await plano()).includes('>N<'));
@@ -133,6 +144,16 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   const contenido = (n) => { const m = pdf.match(new RegExp(`(?:^|\\n)${n} 0 obj[\\s\\S]*?stream\\r?\\n([\\s\\S]*?)endstream`)); try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch (_) { return m ? m[1] : ''; } };
   comprobar('PDF de planos: 5 hojas, la última el emplazamiento', paginas.length === 5 && contenido(paginas[4]).includes('(EMPLAZAMIENTO) Tj') && contenido(paginas[4]).includes('Parcela del Catastro'), `${paginas.length}`);
 
+  // Orientación preferida este-oeste: vuelve a buscar y las cumbreras van a 90°
+  await p.selectOption('#orientacion-preferida', 'este_oeste');
+  await p.waitForFunction(() => document.querySelector('#optimizador h3') && document.querySelector('#optimizador h3').innerText.includes('este-oeste'), null, { timeout: 30000 });
+  const eo = OPT.buscar({ anillos: gml.anillos, catalogo, holgura: 4, perfil: 'clima', orientacion: 'este_oeste', base: { seleccion: {}, opcionales: [], puertas: 1, zona: 'Almería' } });
+  const textosEo = await p.locator('.candidata').allInnerTexts();
+  comprobar('este-oeste: las tarjetas coinciden con el optimizador', eo.mejores.every((x, i) => (textosEo[i] || '').includes(`${x.azimut}°`) && (textosEo[i] || '').includes(`${x.naves} × ${x.tramos}`)), textosEo.map(t => t.replace(/\n/g, ' | ')).join(' // '));
+  await p.click('[data-elegir="0"]');
+  const planoEo = await plano();
+  comprobar('este-oeste: plano con la cumbrera de la elegida', Math.abs(CROQUIS.anguloInvernadero(planoEo) - eo.mejores[0].azimut % 180) < 0.01, `${CROQUIS.anguloInvernadero(planoEo)}`);
+
   // ---------- 4. Guardar y abrir ----------
   console.log('4. Guardar y abrir el proyecto');
   await p.fill('#retranqueo', '5');
@@ -140,14 +161,14 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   const archivo = await bajar('#btn-guardar-proyecto');
   const json = JSON.parse(fs.readFileSync(archivo, 'utf8'));
   comprobar('el proyecto guarda la parcela, la implantación y los retranqueos', json.proyecto.terreno && json.proyecto.terreno.anillos[0].length === 8
-    && json.proyecto.terreno.implantacion && json.proyecto.retranqueo === 5 && json.proyecto.camino === 4 && json.proyecto.perfil === 'clima');
+    && json.proyecto.terreno.implantacion && json.proyecto.retranqueo === 5 && json.proyecto.camino === 4 && json.proyecto.perfil === 'clima' && json.proyecto.orientacion_preferida === 'este_oeste');
   await p.goto(url);
   comprobar('pantalla nueva: sin parcela', await p.locator('.parcela-cargada').count() === 0);
   await p.setInputFiles('#archivo-proyecto', archivo);
   await p.waitForSelector('body.dialogo-abierto');
   await p.click('#btn-cerrar-dialogo');
   comprobar('vuelve la parcela', (await p.locator('.parcela-cargada').innerText()).includes('00000X00000000'));
-  comprobar('vuelven retranqueo y perfil', await p.inputValue('#retranqueo') === '5' && await p.inputValue('#perfil') === 'clima');
+  comprobar('vuelven retranqueo, perfil y orientación', await p.inputValue('#retranqueo') === '5' && await p.inputValue('#perfil') === 'clima' && await p.inputValue('#orientacion-preferida') === 'este_oeste');
   const norm = (s) => s.replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, '');
   comprobar('mismo plano de emplazamiento', norm(await plano()) === norm(hojaGuardada));
 

@@ -32,6 +32,7 @@ const state = {
   retranqueo: 3,
   camino: 4,
   perfil: 'equilibrado',
+  orientacion_preferida: 'norte_sur',   // cumbrera: 'norte_sur' | 'este_oeste' | 'indiferente'
   cliente: '',
   ubicacion: '',
   codigoProyecto: '',
@@ -133,6 +134,7 @@ function aplicarEstadoProyecto(e) {
   poner('cliente', state.cliente); poner('ubicacion', state.ubicacion); poner('codigo-proyecto', state.codigoProyecto);
   poner('viento', state.viento_kmh);
   poner('retranqueo', state.retranqueo); poner('camino', state.camino);
+  if (!OPTIMIZADOR.ORIENTACIONES[state.orientacion_preferida]) state.orientacion_preferida = OPTIMIZADOR.ORIENTACION_PREFERIDA;
   state.optimizacion = null;
   poner('parcela-largo', state.parcela.largo); poner('parcela-ancho', state.parcela.ancho); poner('parcela-orientacion', state.parcela.orientacion);
   document.getElementById('parcela-girado').checked = !!state.parcela.girado;
@@ -302,6 +304,11 @@ function renderConfigPanel({ modelo }) {
     perfilSelect.innerHTML = Object.entries(OPTIMIZADOR.PERFILES).map(([k, p]) => `<option value="${k}">${esc(p.nombre)}</option>`).join('');
   }
   perfilSelect.value = OPTIMIZADOR.PERFILES[state.perfil] ? state.perfil : 'equilibrado';
+  const orientSelect = document.getElementById('orientacion-preferida');
+  if (orientSelect.options.length === 0) {
+    orientSelect.innerHTML = Object.entries(OPTIMIZADOR.ORIENTACIONES).map(([k, o]) => `<option value="${k}">${esc(o.nombre)}</option>`).join('');
+  }
+  orientSelect.value = state.orientacion_preferida;
   mostrarParcela();
   renderOptimizador();
 
@@ -511,9 +518,9 @@ function implantacionActual(g) {
   const imp = t.implantacion;
   const mismas = imp && Math.abs(imp.largo - g.largo) < 1e-6 && Math.abs(imp.ancho - g.ancho_total) < 1e-6;
   if (mismas && PARCELA.holguraRect(t.anillos, imp).distancia >= h - 1e-6) return imp;
-  const clave = `${g.largo}|${g.ancho_total}|${h}|${JSON.stringify(t.anillos[0][0])}`;
+  const clave = `${g.largo}|${g.ancho_total}|${h}|${state.orientacion_preferida}|${JSON.stringify(t.anillos[0][0])}`;
   if (cacheEncaje.clave !== clave) {
-    const nueva = OPTIMIZADOR.encajar(t.anillos, g.largo, g.ancho_total, h);
+    const nueva = OPTIMIZADOR.encajar(t.anillos, g.largo, g.ancho_total, h, state.orientacion_preferida);
     cacheEncaje = { clave, imp: nueva && { cx: nueva.cx, cy: nueva.cy, azimut: nueva.azimut, largo: g.largo, ancho: g.ancho_total } };
   }
   if (cacheEncaje.imp) t.implantacion = cacheEncaje.imp;
@@ -678,39 +685,17 @@ function optimizar() {
   caja.innerHTML = '<p class="hint">Buscando la mejor implantación (orientaciones cada 5°, todos los modelos, anchos y separaciones)…</p>';
   // Deja pintar el mensaje antes del cálculo (≈ 1 s)
   setTimeout(() => {
+    // Con el rectángulo a mano, el invernadero va paralelo a la parcela o girado 90°
+    const p = state.terreno ? null : parcelaDelProyecto();
     const res = OPTIMIZADOR.buscar({
-      anillos, catalogo: CATALOGO, holgura: holguraProyecto(), perfil: state.perfil,
+      anillos, catalogo: CATALOGO, holgura: holguraProyecto(), perfil: state.perfil, orientacion: state.orientacion_preferida,
+      azimuts: p ? [p.orientacion, p.orientacion + 90] : undefined,
       base: { seleccion: state.seleccion, opcionales: [...state.opcionales], puertas: state.puertas, zona: state.zona || undefined,
         sitio: state.viento_kmh !== '' ? { viento_kmh: +state.viento_kmh } : undefined }
     });
     state.optimizacion = { res, anillos, elegida: null };
     renderOptimizador();
   }, 30);
-}
-
-// Croquis en planta, con el norte arriba: parcela, invernadero y sus naves
-function croquis(anillos, c) {
-  const pts = anillos[0];
-  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const m = Math.max(x1 - x0, y1 - y0) * 0.06;
-  const d = (a) => 'M' + a.map(([x, y]) => `${x.toFixed(2)},${(-y).toFixed(2)}`).join(' L') + ' Z';
-  const imp = c.implantacion;
-  const r = PARCELA.esquinas({ cx: imp.cx, cy: imp.cy, azimut: imp.azimut, largo: c.largo, ancho: c.ancho });
-  const canales = [];
-  for (let j = 1; j < c.naves; j++) {
-    const t = j / c.naves;
-    const a = [r[0][0] + t * (r[3][0] - r[0][0]), r[0][1] + t * (r[3][1] - r[0][1])];
-    const b = [r[1][0] + t * (r[2][0] - r[1][0]), r[1][1] + t * (r[2][1] - r[1][1])];
-    canales.push(`<line x1="${a[0].toFixed(2)}" y1="${(-a[1]).toFixed(2)}" x2="${b[0].toFixed(2)}" y2="${(-b[1]).toFixed(2)}"/>`);
-  }
-  const ancho = x1 - x0 + 2 * m;
-  return `<svg class="croquis" viewBox="${x0 - m} ${-y1 - m} ${ancho} ${y1 - y0 + 2 * m}" preserveAspectRatio="xMidYMid meet">
-    <path d="${anillos.map(d).join(' ')}" fill="#f4f4f4" fill-rule="evenodd" stroke="#333" stroke-width="${ancho / 200}" stroke-dasharray="${ancho / 40} ${ancho / 120}"/>
-    <path d="${d(r)}" fill="#b9d7b0" stroke="#1b5e20" stroke-width="${ancho / 160}"/>
-    <g stroke="#1b5e20" stroke-width="${ancho / 400}">${canales.join('')}</g>
-    <text x="${x1 + m * 0.2}" y="${-y1 + m * 0.4}" font-size="${ancho / 14}" text-anchor="end" font-family="sans-serif" fill="#666">N ↑</text>
-  </svg>`;
 }
 
 function renderOptimizador() {
@@ -725,13 +710,17 @@ function renderOptimizador() {
     return;
   }
   const orient = (az) => `${az}° ${az === 0 ? '(cumbrera norte-sur)' : az === 90 ? '(cumbrera este-oeste)' : ''}`;
-  // Marcada mientras la pantalla siga con sus medidas
-  const esLaActual = (c) => c.modelo.id === state.modelo && c.naves === state.naves && c.tramos === state.tramos;
+  const G = OPTIMIZADOR.GRUPO_VENTANA;
+  // Marcada mientras la pantalla siga con sus medidas y su ventana
+  const esLaActual = (c) => c.modelo.id === state.modelo && c.naves === state.naves && c.tramos === state.tramos
+    && (!c.ventana || state.seleccion[G] === c.ventana.id);
   const tarjetas = res.mejores.map((c, i) => `
-    <div class="candidata${o.elegida === i && esLaActual(c) ? ' elegida' : ''}" data-candidata="${i}">
+    <div class="candidata${o.elegida === i && esLaActual(c) ? ' elegida' : ''}${c.enRojo ? ' en-rojo' : ''}" data-candidata="${i}">
       <div class="candidata-cabecera"><span class="puesto">${i + 1}</span> ${esc(c.modelo.nombre)}</div>
-      ${croquis(o.anillos, c)}
+      ${c.enRojo ? `<div class="aviso rojo">${esc(c.aviso)}</div>` : ''}
+      ${CROQUIS.svg(o.anillos, c)}
       <table>
+        <tr><td>Ventana cenital</td><td>${esc(c.ventana ? c.ventana.nombre : 'Sin ventana')}</td></tr>
         <tr><td>Naves × tramos</td><td>${c.naves} × ${c.tramos}</td></tr>
         <tr><td>Medidas</td><td>${fmtNum(c.ancho, 2)} × ${fmtNum(c.largo, 2)} m</td></tr>
         <tr><td>Superficie</td><td><strong>${fmtNum(c.area, 0)} m²</strong></td></tr>
@@ -743,10 +732,11 @@ function renderOptimizador() {
       <button class="btn-primary btn-elegir" data-elegir="${i}">${o.elegida === i && esLaActual(c) ? '✓ Elegida' : 'Elegir'}</button>
     </div>`).join('');
   const p = res.pesos;
-  caja.innerHTML = `<h3>Las 3 mejores implantaciones <small>· ${esc(res.perfil)}: coste ${p.coste * 100} %, superficie ${p.superficie * 100} %, ventilación ${p.ventilacion * 100} %, orientación ${p.orientacion * 100} % · ${res.candidatas} combinaciones</small></h3>
+  const pref = OPTIMIZADOR.ORIENTACIONES[res.orientacion];
+  caja.innerHTML = `<h3>Las 3 mejores implantaciones <small>· ${esc(res.perfil)}: coste ${p.coste * 100} %, superficie ${p.superficie * 100} %, ventilación ${p.ventilacion * 100} %, orientación ${p.orientacion * 100} % (${esc(pref ? pref.nombre.toLowerCase() : '')}) · ${res.candidatas} combinaciones</small></h3>
     ${avisos}
     <div class="candidatas">${tarjetas}</div>
-    <p class="hint">A ${fmtNum(holguraProyecto(), 2)} m de los linderos como mínimo. Precios del catálogo cargado; al elegir una, se rellenan modelo, naves, tramos, ancho y separación y se generan los planos.</p>`;
+    <p class="hint">A ${fmtNum(holguraProyecto(), 2)} m de los linderos como mínimo. Cada opción se calcula con cada ventana cenital del catálogo y se muestra la mejor de cada modelo + ventana. Precios del catálogo cargado; al elegir una, se rellenan modelo, ventana, naves, tramos, ancho y separación y se generan los planos.</p>`;
 }
 
 function elegirCandidata(i) {
@@ -758,6 +748,7 @@ function elegirCandidata(i) {
   state.tramos = c.tramos;
   state.ancho_nave = c.ancho_nave;
   state.separacion = c.separacion;
+  if (c.ventana) state.seleccion[OPTIMIZADOR.GRUPO_VENTANA] = c.ventana.id;
   depurarSeleccion();
   const imp = c.implantacion;
   if (state.terreno) {
@@ -800,6 +791,10 @@ function bindEvents() {
   document.getElementById('perfil').addEventListener('change', e => {
     state.perfil = e.target.value;
     if (state.optimizacion) optimizar(); // mismas candidatas, otra puntuación
+  });
+  document.getElementById('orientacion-preferida').addEventListener('change', e => {
+    state.orientacion_preferida = e.target.value;
+    if (state.optimizacion) optimizar(); else render();
   });
   document.getElementById('btn-optimizar').addEventListener('click', optimizar);
   document.getElementById('btn-cargar-parcela').addEventListener('click', () => document.getElementById('archivo-parcela').click());

@@ -655,3 +655,5 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 .candidata td:first-child { color: #666; }
 .candidata td:last-child { text-align: right; }
 .candidata .btn-elegir { margin-top: auto; padding: 8px; }
+.candidata.en-rojo { border-color: #e57373; }
+.candidata .aviso { margin: 0; }
