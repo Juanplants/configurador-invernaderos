@@ -9,7 +9,7 @@
 
 const PROPUESTA = {
 
-  generar({ state, catalogo, r, perfiles, planos }) {
+  generar({ state, catalogo, r, perfiles, planos, sitio }) {
     const emp = catalogo.empresa || {};
     const modelo = catalogo.modelos.find(m => m.id === r.modelo.id);
     const ctx = {
@@ -19,7 +19,12 @@ const PROPUESTA = {
       codigo: state.codigoProyecto || 'PROP-' + new Date().toISOString().slice(0, 10).replace(/-/g, ''),
       cliente: state.cliente || 'Cliente no especificado',
       ubicacion: state.ubicacion || '—',
-      categorias: Object.keys(r.precio.categorias)
+      categorias: Object.keys(r.precio.categorias),
+      // Sitio (municipio, cargas del CTE, categoría, pendiente); sin él, lo que haya en la pantalla
+      sitio: sitio || {
+        viento_kmh: state.viento_kmh ?? '', nieve_kgm2: state.nieve_kgm2 ?? '', pendiente: (state.sitio && state.sitio.pendiente) ?? '',
+        origen_viento: state.viento_kmh !== '' && state.viento_kmh !== undefined ? 'manual' : '', origen_nieve: state.nieve_kgm2 ? 'manual' : ''
+      }
     };
     // Qué valores dependen de datos estimados
     const est = (l) => l.origen === 'estimado';
@@ -193,16 +198,26 @@ const PROPUESTA = {
   },
 
   _cargas(ctx) {
-    const { modelo, r, state } = ctx;
+    const { modelo, r, sitio } = ctx;
     const e = r.emplazamiento;
     const m = this._est(modelo.origen);
     const fila = (txt, val, ud) => (val === undefined || val === null || val === '')
       ? '' : `<tr><td>${txt}</td><td>${this._num(val, 1)} ${ud}${m}</td></tr>`;
     const textoApto = {
       apto: 'Apto',
-      al_limite: 'Al límite de las cargas declaradas',
-      no_apto: 'No apto: requiere cálculo estructural específico'
+      al_limite: 'Al límite (margen 10 %)',
+      no_apto: 'No apto: requiere cálculo',
+      sin_dato: 'Sin dato del fabricante'
     };
+    const s = sitio || {};
+    const origen = (o) => o === 'municipio' ? 'CTE DB SE-AE, por municipio' : o === 'manual' ? 'introducido a mano' : '';
+    const valor = (v, d, ud) => (v === '' || v === undefined || v === null) ? '—' : `${this._num(v, d)} ${ud}`;
+    const declarado = (v, ud) => (v > 0 ? `${this._num(v, 0)} ${ud}${m}` : 'no declarado');
+    const filaCarga = (txt, vSitio, d, ud, o, vDecl, res) => `<tr><td>${txt}</td><td>${valor(vSitio, d, ud)}${o ? `<br><small>${origen(o)}</small>` : ''}</td>`
+      + `<td>${declarado(vDecl, ud)}</td><td><strong>${vSitio === '' || vSitio === undefined ? '—' : textoApto[res] || '—'}</strong></td></tr>`;
+    const mun = s.municipio;
+    const c = s.cargas;
+    const f2 = (v) => this._num(v, 2);
     return `
       <section class="page">
         <h3>1.4 Cargas de cálculo y emplazamiento</h3>
@@ -214,13 +229,25 @@ const PROPUESTA = {
           ${fila('Cultivo colgado', modelo.cultivo_colgado, 'kg/m²')}
           ${fila('Equipamiento', modelo.equipamiento, 'kg/m²')}
         </table>
-        ${e ? `
-        <h4>Comprobación del emplazamiento</h4>
+        ${e || mun || s.pendiente !== '' ? `
+        <h4>Emplazamiento</h4>
         <table class="tabla">
-          <tr><td>Viento de diseño del sitio</td><td>${this._num(state.viento_kmh, 0)} km/h</td></tr>
-          <tr><td>Resultado</td><td><strong>${textoApto[e.resultado]}</strong></td></tr>
+          ${mun ? `<tr><td>Municipio</td><td>${this._esc(mun.nombre)} (${this._esc(mun.provincia)}) · altitud ${this._num(mun.altitud, 0)} m</td></tr>
+          <tr><td>Zona eólica / zona climática de invierno</td><td>${this._esc(mun.zona_eolica)} / ${mun.zona_invierno}</td></tr>` : ''}
+          <tr><td>Categoría de terreno</td><td>${this._esc(s.categoria || '—')}${c && c.viento.ce !== null ? ` · c<sub>e</sub> ${f2(c.viento.ce)} a ${this._num(c.viento.altura, 1)} m, q<sub>e</sub> ${f2(c.viento.qe)} kN/m² (informativo)` : ''}</td></tr>
+          ${s.pendiente !== '' && s.pendiente !== undefined ? `<tr><td>Pendiente del terreno</td><td>${this._num(s.pendiente, 1)} %</td></tr>` : ''}
+        </table>` : ''}
+        ${e ? `
+        <h4>Cargas del sitio frente a las declaradas por el fabricante</h4>
+        <table class="tabla tabla-cargas">
+          <tr><th>Carga</th><th>Sitio</th><th>Declarada</th><th>Resultado</th></tr>
+          ${filaCarga('Viento', s.viento_kmh, 1, 'km/h', s.origen_viento, modelo.viento_cerrado, e.viento)}
+          ${filaCarga('Nieve', s.nieve_kgm2, 0, 'kg/m²', s.origen_nieve, modelo.nieve, e.nieve)}
+          <tr class="total"><td colspan="3">Resultado</td><td><strong>${textoApto[e.resultado]}</strong></td></tr>
         </table>
-        <p class="nota">Comparación de cargas del sitio con las declaradas por el modelo; no sustituye al cálculo estructural.</p>
+        <p class="nota">Comparación orientativa de las cargas del sitio con las declaradas por el fabricante del modelo; <strong>no sustituye al cálculo estructural</strong>.
+        Viento del sitio: velocidad básica de la zona eólica (CTE DB SE-AE, anejo D), frente al viento máximo declarado con el invernadero cerrado.
+        Nieve del sitio: sobrecarga en terreno horizontal según zona de invierno y altitud (anejo E). Al límite = a menos de un 10 % de lo declarado.</p>
         ` : ''}
         ${this._notaEstimados(ctx)}
       </section>
