@@ -5,6 +5,14 @@ La herramienta se abre con doble clic y sin internet, así que las librerías va
 | Archivo | Qué es | Versión | Origen | Licencia |
 | --- | --- | --- | --- | --- |
 | `xlsx.mini.min.js` | SheetJS Community Edition, lectura de `.xlsx` | 0.18.5 | paquete npm `xlsx@0.18.5`, `dist/xlsx.mini.min.js` (integridad `sha512-dmg3LCjB…EtFQ==` comprobada contra el registro) | Apache 2.0 (`xlsx.LICENSE`) |
+| `jspdf.umd.min.js` | jsPDF, generación de PDF | 4.2.1 | paquete npm `jspdf@4.2.1`, `dist/jspdf.umd.min.js` (integridad `sha512-YyAXyvnm…6HIlQ==` comprobada contra el registro) | MIT (`jspdf.LICENSE`) |
+| `svg2pdf.umd.min.js` | svg2pdf.js, convierte los planos SVG en PDF vectorial | 2.8.1 | paquete npm `svg2pdf.js@2.8.1`, `dist/svg2pdf.umd.min.js` (integridad `sha512-AzXfPHjH…8udfNQ==` comprobada contra el registro) | MIT (`svg2pdf.LICENSE`) |
+
+## Notas sobre el PDF
+
+- Las hojas se escriben con las fuentes estándar del PDF (Helvetica): no hace falta incrustar fuentes, pero solo admiten el juego WinAnsi (cp1252). Por eso `HOJA.aWinAnsi` normaliza todos los textos de los planos (≈ → «aprox.», etc.).
+- jsPDF solo carga `html2canvas`, `dompurify` y `canvg` si se usa `doc.html()`; la herramienta no lo usa, así que no se copian.
+- Comprobación: `node tests/pdf_navegador.js` (descarga los PDF en Chromium sin conexión y mide la escala).
 
 ## Nota sobre la versión
 
