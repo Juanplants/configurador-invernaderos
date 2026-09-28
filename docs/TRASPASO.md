@@ -16,6 +16,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `js/planos/hoja.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas, rótulos, leyenda y cajetín comunes, perfil del arco |
 | `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento |
 | `js/exportar.js` | Exportación de las hojas a **PDF vectorial A3** (escala real al imprimir en A3 al 100 %) |
+| `js/proyecto.js` | **Guardar y abrir proyecto** (.json) con la identidad del catálogo (fase 5) |
+| `js/excel.js` | **Lista de materiales en Excel** (SheetJS): hoja con precios y hoja de petición de oferta sin precios (fase 5) |
 | `js/importador.js` | **Importador y validador del catálogo** (fase 1): lee la plantilla `.xlsx` en el navegador |
 | `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5, jsPDF 4.2.1, svg2pdf.js 2.8.1 (versiones, origen y licencias en `lib/LEEME.md`) |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
@@ -28,6 +30,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/importacion.js` | Pruebas del importador (36): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
 | `tests/planos.js` | Pruebas de las cinco hojas (217 comprobaciones, 208 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte |
 | `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (208 hojas) |
+| `tests/salidas.js` | Pruebas de las salidas (44): proyecto (ida y vuelta, catálogo distinto, archivos malos), Excel (releído y comparado con el motor; oferta sin precios), propuesta (capítulos, distribuidor, planos A3, asteriscos en tres catálogos) |
+| `tests/salidas_navegador.js` | Las tres salidas en la app sin conexión; propuesta impresa: A4 + una página A3 por plano a 420 × 297 mm (se omite sin Playwright) |
 | `tests/pdf_navegador.js` | Exportación en Chromium sin conexión: nombres, páginas A3, escala real medida en el PDF, títulos, sin peticiones externas (se omite sin Playwright) |
 | `tests/planos_navegador.js` | En Chromium, cada texto real cabe en su caja estimada (se omite sin Playwright) |
 | `tests/generar_catalogo_con_errores.py` → `tests/datos/Catalogo_con_errores.xlsx` | Plantilla con 7 errores y 3 avisos provocados a propósito |
@@ -43,6 +47,8 @@ node tests/importacion.js    # ídem (si se cambia la plantilla: python3 tests/g
 node tests/planos.js
 node tests/planos_navegador.js   # opcional, necesita Playwright
 node tests/pdf_navegador.js      # opcional, necesita Playwright
+node tests/salidas.js
+node tests/salidas_navegador.js  # opcional, necesita Playwright
 ```
 
 Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
@@ -92,12 +98,19 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **En espera de datos del fabricante:** detalles constructivos y cimentación (no empezar hasta tenerlos).
 - **Estética (pendiente, no implementado):** en los alzados sobra espacio vertical por la forma alargada del invernadero. Cuando se retoquen los planos, valorar juntar alzado frontal y sección transversal en una misma hoja A3.
 
+## Salidas (fase 5)
+
+- **Guardar / abrir proyecto** (sección Proyecto): `<código>_proyecto_<fecha>.json` con todo lo introducido (modelo, geometría, opciones, puertas, zona, viento, parcela, datos del cliente, pestaña) y la identidad del catálogo (nombre, versión, fecha, archivo y huella FNV-1a del contenido). No incrusta el catálogo. Al abrir: huella distinta → aviso (aunque coincidan nombre y versión); modelo que no está en el catálogo cargado → no se abre; opciones o zona que ya no existen → se descartan con aviso.
+- **Excel** (botón en la lista de materiales): `<código>_materiales_<fecha>.xlsx`. Hoja «Materiales»: categoría, partida, referencia, cantidad, unidad, kg, precio unitario, importe, origen del catálogo y cálculo; al final obra local, base, IVA y total. Hoja «Petición de oferta»: sin precios, encabezados en español e inglés, datos del invernadero, especificación de cada referencia y columnas vacías para el precio y las observaciones del fabricante.
+- **Propuesta**: capítulos = categorías del catálogo, con el texto de propuesta de cada partida; distribuidor en portada y en «Datos de la oferta»; cada plano en una página A3 apaisada propia (CSS `@page plano-a3`) a escala real al imprimir, el resto en A4; nota de planos informativos. Todo valor que sea o dependa de un dato estimado lleva asterisco (partidas, precios por categoría y totales, acero, ventilación, altura a cumbrera, volumen, garantía).
+
 ## Siguientes pasos (en orden)
 
 1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 cuando se pueda descargar de `cdn.sheetjs.com` (instrucciones en `lib/LEEME.md`).
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
+5. **Fase 5 — salidas**: proyecto .json, Excel y propuesta hechos (ver «Salidas»); falta el paso a paso de la interfaz (flujo de 6 pasos de la especificación).
 
 ## Reglas de trabajo
 
