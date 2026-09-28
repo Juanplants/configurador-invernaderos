@@ -5,12 +5,16 @@
 // 1. Guardar y abrir proyecto: ida y vuelta, catálogo distinto, archivos malos.
 // 2. Lista de materiales en Excel: se escribe, se relee y se compara con el motor;
 //    la hoja de petición de oferta no lleva ningún precio.
+// 3. Propuesta: capítulos desde el catálogo, datos del distribuidor, planos A3
+//    con la nota de oferta, y ningún valor estimado sin su asterisco.
 // (tests/salidas_navegador.js repite las tres salidas en la app real.)
 
 const PROYECTO = require('../js/proyecto.js');
 const EXCEL = require('../js/excel.js');
 const MOTOR = require('../js/motor/motor.js');
 const XLSX = require('../lib/xlsx.mini.min.js');
+const PROPUESTA = require('../js/propuesta.js');
+const HOJAS = require('./hojas_de_prueba.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
 
 let fallos = 0, ok = 0;
@@ -125,6 +129,82 @@ console.log('2. Lista de materiales en Excel');
   const pilar = cuerpo.find(f => f[1] === 'PIL-120x60');
   comprobar('petición de oferta: especificación del perfil desde el catálogo', pilar && pilar[3].includes('120×60') && pilar[3].includes('Q235'), pilar && pilar[3]);
   comprobar('petición de oferta: datos del invernadero', oferta.some(f => f[0] === 'Naves / Spans' && f[1] === 6));
+}
+
+console.log('3. Propuesta comercial');
+{
+  const proyecto = { modelo: 'MT-GOT-80', naves: 3, tramos: 11, altura_canal: 4.5, puertas: 1, zona: 'Almería' };
+  const estado = { cliente: 'Finca La Prueba', ubicacion: 'Níjar', codigoProyecto: '26JD001' };
+  // Planos reales (las cinco hojas) para la geometría del proyecto
+  function planosDe(cat, r) {
+    const modelo = cat.modelos.find(m => m.id === r.modelo.id);
+    const d = Object.assign(HOJAS.datos({ g: r.geometria, modelo, parcela: { largo: 80, ancho: 50, orientacion: 20 } }), { empresa: cat.empresa });
+    return { planta: HOJAS.PLANTA.planta(d), alzadoFrontal: HOJAS.TRANSVERSAL.alzadoFrontal(d), alzadoLateral: HOJAS.LATERAL.alzadoLateral(d),
+      seccion: HOJAS.TRANSVERSAL.seccion(d), emplazamiento: HOJAS.EMPLAZAMIENTO.emplazamiento(d) };
+  }
+  const generar = (cat) => {
+    const r = MOTOR.calcular(cat, proyecto);
+    return { r, html: PROPUESTA.generar({ state: estado, catalogo: cat, r, perfiles: cat.perfiles, planos: planosDe(cat, r) }) };
+  };
+  const MARCA = '<sup class="est-marca">*</sup>';
+  // Fila de tabla que contiene un texto (la primera)
+  const fila = (html, texto) => (html.match(new RegExp(`<tr[^>]*><td>(?:(?!</tr>).)*?${texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:(?!</tr>).)*?</tr>`, 's')) || [''])[0];
+
+  // Catálogo con categorías y textos propios
+  const propio = copia(catalogo);
+  propio.componentes.forEach(c => { if (c.categoria === 'Estructura') c.categoria = 'Estructura metálica'; });
+  propio.componentes.find(c => c.id === 'C01').texto_propuesta = 'Pilares de tubo rectangular galvanizado Sendzimir';
+  propio.empresa.nombre = 'Invernaderos del Poniente S.L.';
+  const { r, html } = generar(propio);
+  const capitulos = [...html.matchAll(/<h3>2\.(\d+) ([^<]+)<\/h3>/g)].map(m => m[2]);
+  comprobar('capítulos = categorías del catálogo, en orden', JSON.stringify(capitulos) === JSON.stringify(Object.keys(r.precio.categorias)) && capitulos[0] === 'Estructura metálica', JSON.stringify(capitulos));
+  const sinTexto = r.lineas.filter(l => l.texto && !html.includes(l.texto.replace(/&/g, '&amp;')));
+  comprobar('cada partida con su texto de propuesta', sinTexto.length === 0 && html.includes('Pilares de tubo rectangular galvanizado Sendzimir'), sinTexto.map(l => l.id).join(','));
+  comprobar('la traza del cálculo no sale en la propuesta', !r.lineas.some(l => l.traza.calculo && html.includes(l.traza.calculo)));
+  const e = propio.empresa;
+  comprobar('datos del distribuidor', [e.nombre, e.condiciones_de_pago, e.plazo_de_entrega, e.garantias].every(t => html.includes(t))
+    && html.includes('Oferta presentada por <strong>Invernaderos del Poniente S.L.</strong>') && html.includes('Datos de la oferta'));
+  const hojas = [...html.matchAll(/<section class="hoja-a3" data-plano="(\w+)"[^>]*>\s*<svg class="plano-a3" viewBox="0 0 420 297"/g)].map(m => m[1]);
+  comprobar('las cinco hojas A3 incluidas', JSON.stringify(hojas) === '["planta","alzadoFrontal","alzadoLateral","seccion","emplazamiento"]', JSON.stringify(hojas));
+  comprobar('nota de plano informativo en el texto y en cada cajetín', html.includes('Planos informativos de oferta. No válidos para ejecución ni tramitación.')
+    && (html.match(/Plano informativo de oferta\. No válido para ejecución ni tramitación\./g) || []).length === 5);
+  comprobar('el distribuidor también en el cajetín de los planos', (html.match(/>Invernaderos del Poniente S\.L\.</g) || []).length >= 5);
+
+  // Estimados: cada valor que depende de un dato estimado lleva asterisco, y los del fabricante no
+  function comprobarMarcas(nombre, cat) {
+    const { r, html } = generar(cat);
+    const errores = [];
+    for (const l of r.lineas) {
+      const f = fila(html, l.texto || l.nombre);
+      if (!f) { errores.push(`${l.id} sin fila`); continue; }
+      const celdaCantidad = (f.match(/<td class="num">(.*?)<\/td>/s) || [])[1] || '';
+      if ((l.origen === 'estimado') !== celdaCantidad.includes(MARCA)) errores.push(`${l.id} (${l.origen})`);
+    }
+    for (const cat_ of Object.keys(r.precio.categorias)) {
+      const f = [...html.matchAll(/<tr><td>([^<]+)<\/td><td class="num">([^<]+ €)(.*?)<\/td><\/tr>/g)].find(m => m[1] === cat_);
+      const debe = r.lineas.some(l => l.categoria === cat_ && l.origen === 'estimado');
+      if (!f || f[3].includes(MARCA) !== debe) errores.push(`precio de ${cat_}`);
+    }
+    const hayEstimados = r.lineas.some(l => l.origen === 'estimado') || cat.modelos.some(m => m.origen === 'estimado') || (cat.obra_local || []).some(z => z.origen === 'estimado');
+    if (hayEstimados !== html.includes('pendiente de confirmación por el fabricante')) errores.push('nota de estimados');
+    if (!hayEstimados && html.includes(MARCA)) errores.push('asterisco sin estimados');
+    comprobar(`${nombre}: asteriscos en todo lo estimado y en nada del fabricante`, errores.length === 0, errores.slice(0, 6).join(', '));
+    return { r, html };
+  }
+  const ejemplo = comprobarMarcas('catálogo de ejemplo', catalogo);
+  comprobar('ejemplo: total, acero, cumbrera y garantía marcados', ['TOTAL PRESUPUESTO', 'Altura a cumbrera', 'Volumen interior'].every(t => fila(ejemplo.html, t).includes(MARCA))
+    && /Acero total:.*?<sup class="est-marca">\*<\/sup>/.test(ejemplo.html) && /años<\/strong><sup class="est-marca">/.test(ejemplo.html));
+
+  const fabricante = copia(catalogo);
+  for (const h of ['modelos', 'perfiles', 'componentes', 'cubiertas', 'equipos', 'obra_local']) fabricante[h].forEach(x => { x.origen = 'fabricante'; });
+  const todoFab = comprobarMarcas('todo del fabricante', fabricante);
+  comprobar('todo del fabricante: ningún asterisco ni nota', !todoFab.html.includes(MARCA) && !todoFab.html.includes('estimado'));
+
+  const mixto = copia(catalogo);
+  mixto.componentes.filter(c => c.categoria === 'Estructura').forEach(c => { c.origen = 'fabricante'; });
+  mixto.perfiles.forEach(p => { p.origen = 'fabricante'; });
+  const m = comprobarMarcas('mixto (estructura del fabricante)', mixto);
+  comprobar('mixto: acero sin asterisco, total con asterisco', !/Acero total:[^<]*<sup/.test(m.html) && /Acero total/.test(m.html) && fila(m.html, 'TOTAL PRESUPUESTO').includes(MARCA));
 }
 
 console.log(`\n${ok} comprobaciones correctas, ${fallos} fallos`);
