@@ -2,8 +2,8 @@
 
 Herramienta local (HTML + JavaScript, sin instalación) para diseñar invernaderos multitúnel, calcular su lista de materiales y generar planos y propuesta comercial a partir del catálogo de cada distribuidor.
 
-- **v0.3** (actual interfaz): abrir `index.html`.
-- **v0.4 en desarrollo**: el motor de cálculo nuevo está en `js/motor/`; se prueba abriendo `motor.html`.
+- **Configurador**: abrir `index.html` (interfaz de la v0.3 conectada al motor de cálculo v0.4 y al catálogo de ejemplo).
+- **Motor de cálculo**: `js/motor/`; página de prueba aislada en `motor.html`.
 
 Documentación:
 
