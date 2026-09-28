@@ -123,7 +123,8 @@
   // eje 'h': cota horizontal bajo el dibujo; 'v': vertical a su derecha.
   // posiciones: coordenadas (mm) de cada línea de ejes, en orden; valores: m de cada vano.
   // origen: borde del dibujo del que salen las líneas de referencia; linea: coordenada de la línea de cota.
-  function cadena(reg, { eje, posiciones, valores, origen, linea: lc, tam = 2.5, limite, nombre }) {
+  // textos: rótulo de cada vano en lugar del valor (p. ej. un tramo interrumpido); no se agrupan
+  function cadena(reg, { eje, posiciones, valores, textos, origen, linea: lc, tam = 2.5, limite, nombre }) {
     const partes = [];
     const hor = eje === 'h';
     const holgura = 0.6;
@@ -137,8 +138,8 @@
 
     // Vanos individuales si todos caben; si no, grupos de vanos iguales ("11 × 4,00")
     const hueco = (i, j) => posiciones[j] - posiciones[i];
-    let grupos = valores.map((v, i) => ({ i, j: i + 1, t: fmtCota(v) }));
-    if (grupos.some(gr => anchoTexto(gr.t, tam) + 2 * holgura > hueco(gr.i, gr.j))) {
+    let grupos = valores.map((v, i) => ({ i, j: i + 1, t: textos ? textos[i] : fmtCota(v) }));
+    if (!textos && grupos.some(gr => anchoTexto(gr.t, tam) + 2 * holgura > hueco(gr.i, gr.j))) {
       grupos = [];
       for (let i = 0; i < valores.length;) {
         let j = i + 1;
@@ -179,6 +180,8 @@
         : [{ x: lc - sep, y: medio, rot: -90 },
            { x: lc + tam * 0.35, y: aN + 2 + w / 2, rot: -90 },
            { x: lc + tam * 0.35, y: a0 - 2 - w / 2, rot: -90 }];
+      // Fuera de los extremos, primero por el lado más cercano al vano
+      if (medio < (a0 + aN) / 2) [pos[1], pos[2]] = [pos[2], pos[1]];
       // La primera posición exige caber entre las líneas de referencia del grupo
       if (w + 2 * holgura > hueco(gr.i, gr.j)) pos.shift();
       partes.push(textoRegistrado(reg, pos, gr.t, tam, { limite, tipo: 'cota', nombre: `${nombre} ${gr.t}` }));
@@ -257,11 +260,105 @@
     return partes.join('');
   }
 
+  // ---------- Fondo, leyenda y cajetín comunes a todas las hojas ----------
+  function fondo() {
+    return `<rect x="0" y="0" width="${A3.w}" height="${A3.h}" fill="#fff"/>`
+      + rect(MARCO, LINEA.marco)
+      + linea(LEYENDA.x, LEYENDA.y, CAJETIN.x, LEYENDA.y, LINEA.cajetin);
+  }
+
+  // simbolos: [[svg centrado en 0,0 (±4 × ±1 mm), texto]]; notas: líneas bajo los símbolos
+  function hojaBase(reg, { escala, titulo, numero, g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', simbolos = [], notas = [] }) {
+    const partes = [];
+    const LZ = { x: LEYENDA.x + 2, y: LEYENDA.y + 1, w: LEYENDA.w - 4, h: LEYENDA.h - 2 };
+    partes.push(textoRegistrado(reg, [{ x: LZ.x + 1, y: LZ.y + 4, ancla: 'start' }], 'LEYENDA', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
+    simbolos.slice(0, 6).forEach(([svg, t], i) => {
+      const col = Math.floor(i / 3), fila = i % 3;
+      const cx = LZ.x + 6 + col * 45, cy = LZ.y + 10 + fila * 6;
+      partes.push(`<g transform="translate(${cx} ${cy})">${svg}</g>`);
+      reg.ocupar({ x: cx - 4.2, y: cy - 1.2, w: 8.4, h: 2.4 }, 'leyenda_simbolo');
+      partes.push(textoRegistrado(reg, [{ x: cx + 6, y: cy + 0.8, ancla: 'start' }], t, 2.2, { limite: LZ, tipo: 'leyenda' }));
+    });
+    const lineas = notas.slice(0, 4).concat([`Escala 1:${escala} en formato A3 (420 × 297 mm).`]);
+    lineas.forEach((t, i) => partes.push(textoRegistrado(reg, [{ x: LZ.x + 1, y: LZ.y + 30 + i * 3.6, ancla: 'start' }],
+      ajustar(t, 2.2, LZ.w - 2), 2.2, { limite: LZ, tipo: 'leyenda' })));
+    partes.push(textoRegistrado(reg, [{ x: LZ.x + 100, y: LZ.y + 4, ancla: 'start' }], 'ESCALA GRÁFICA', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
+    partes.push(escalaGrafica(reg, LZ.x + 100, LZ.y + 9, escala, LZ));
+
+    const proy = [proyecto.cliente, proyecto.codigo].filter(Boolean).join(' · ') || '—';
+    partes.push(cajetin(reg, [
+      { x: 0, y: 0, w: 100, h: 14, etiqueta: 'DISTRIBUIDOR', valor: empresa.nombre || '—', tam: 3.5, peso: 700 },
+      { x: 100, y: 0, w: 80, h: 14, etiqueta: 'PLANO', valor: titulo, tam: 4, peso: 700 },
+      { x: 0, y: 14, w: 100, h: 12, etiqueta: 'CLIENTE · PROYECTO', valor: proy },
+      { x: 100, y: 14, w: 40, h: 12, etiqueta: 'ESCALA', valor: '1:' + escala, tam: 3.5, peso: 700 },
+      { x: 140, y: 14, w: 40, h: 12, etiqueta: 'FORMATO', valor: 'A3' },
+      { x: 0, y: 26, w: 100, h: 12, etiqueta: 'UBICACIÓN', valor: proyecto.ubicacion || '—' },
+      { x: 100, y: 26, w: 40, h: 12, etiqueta: 'FECHA', valor: fecha || '—' },
+      { x: 140, y: 26, w: 40, h: 12, etiqueta: 'PLANO N.º', valor: numero },
+      { x: 0, y: 38, w: 100, h: 12, etiqueta: 'MODELO', valor: modelo.nombre || '—' },
+      { x: 100, y: 38, w: 80, h: 12, etiqueta: 'DIMENSIONES', valor: `${g.naves} × ${fmtCota(g.ancho_nave)} × ${fmtCota(g.largo)} m · ${Math.round(g.area).toLocaleString('es-ES')} m²` }
+    ]));
+    return partes.join('');
+  }
+
+  // ---------- Rótulo con línea de referencia ----------
+  // Desde el punto (px, py): primero en horizontal hacia la derecha o la
+  // izquierda (largo mm); si no cabe, en vertical hasta encima del dibujo
+  // (`arriba`: borde superior del dibujo) con el texto centrado. Devuelve '' si no cabe.
+  function rotulo(reg, { px, py, texto: t, tam = 2.5, largo = 12, arriba, limite, nombre, obligatoria = true }) {
+    const cands = [];
+    for (const lado of [1, -1]) {
+      for (const extra of [0, 8, 20, 40]) {
+        const fin = px + lado * (largo + extra);
+        const x = fin + lado * 1;
+        cands.push({ l: [px, py, fin, py], p: { x, y: py + tam * 0.35, ancla: lado > 0 ? 'start' : 'end' },
+          caja: cajaTexto(x, py + tam * 0.35, t, tam, lado > 0 ? 'start' : 'end') });
+      }
+    }
+    if (arriba !== undefined) {
+      for (const e of [4, 10, 16]) {
+        const fin = arriba - e;
+        const y = fin - 0.8 - DESC * tam;
+        cands.push({ l: [px, py, px, fin], p: { x: px, y, ancla: 'middle' }, caja: cajaTexto(px, y, t, tam, 'middle') });
+      }
+    }
+    // La línea sale de dentro del dibujo: puede cruzar su contorno, pero no textos ni otras líneas
+    const cajaL = ([x1, y1, x2, y2]) => ({ x: Math.min(x1, x2) - 0.2, y: Math.min(y1, y2) - 0.2, w: Math.abs(x2 - x1) + 0.4, h: Math.abs(y2 - y1) + 0.4 });
+    const libres = cands.filter(c => reg.cajas.every(o => o.tipo === 'dibujo' || !solapan(cajaL(c.l), o)));
+    const r = reg.colocar(libres, { limite, tipo: 'rotulo', nombre: nombre || t, obligatoria });
+    if (!r) return '';
+    reg.ocupar(cajaL(r.l), 'referencia');
+    return linea(...r.l, LINEA.referencia) + `<circle cx="${n(px)}" cy="${n(py)}" r="0.5" fill="#000"/>`
+      + texto(r.p.x, r.p.y, t, tam, { ancla: r.p.ancla, indice: r.indice });
+  }
+
+  // ---------- Perfil del arco ----------
+  // Parábola de luz `ancho` y flecha `flecha` (m): la misma forma con la que el
+  // motor calcula la longitud de arco y el volumen. Devuelve [x, altura] desde el canal.
+  function puntosArco(ancho, flecha, pasos = 40) {
+    return Array.from({ length: pasos + 1 }, (_, i) => {
+      const t = i / pasos;
+      return [t * ancho, flecha * (1 - (2 * t - 1) ** 2)];
+    });
+  }
+  // Punto del arco a una distancia `s` (m, medida sobre el arco) desde la cumbrera, hacia lado ±1
+  function puntoDesdeCumbrera(ancho, flecha, s, lado) {
+    const pasos = 400, dx = (ancho / 2) / pasos;
+    const y = (x) => flecha * (1 - (2 * x / ancho - 1) ** 2);
+    let x = ancho / 2, recorrido = 0;
+    for (let i = 0; i < pasos && recorrido < s; i++) {
+      const x2 = x + lado * dx;
+      recorrido += Math.hypot(dx, y(x2) - y(x));
+      x = x2;
+    }
+    return [x, y(x)];
+  }
+
   const API = {
     A3, MARCO, CAJETIN, LEYENDA, DIBUJO, ESCALAS, LINEA, FUENTE, ASC, DESC,
     anchoTexto, cajaTexto, solapan, dentro, Registro,
     esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, elegirEscala,
-    cadena, burbujas, escalaGrafica, cajetin
+    cadena, burbujas, escalaGrafica, cajetin, fondo, hojaBase, rotulo, puntosArco, puntoDesdeCumbrera
   };
   raiz.HOJA = API;
   if (typeof module !== 'undefined') module.exports = API;
