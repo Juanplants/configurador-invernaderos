@@ -729,3 +729,5 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 .tabla-aptitud th { text-align: left; font-size: 11px; color: #666; font-weight: 600; padding: 3px 4px; border-bottom: 1px solid #e0e0e0; }
 .tabla-aptitud td.apto-sin_dato { color: #b26a00; }
 #btn-cargas-municipio { margin-bottom: 8px; }
+.municipio-datos .rojo, .tabla-aptitud .rojo { color: #c62828; }
+.tabla-aptitud td.apto-fuera_tabla { color: #c62828; }
