@@ -1,8 +1,9 @@
 """Convierte la plantilla Excel del catálogo en datos/catalogo-ejemplo.json.
 
 Uso: python3 herramientas/catalogo_a_json.py datos/Catalogo_Plantilla_v0.4.xlsx datos/catalogo-ejemplo.json
-(En la fase 1 esta conversión la hará la propia app en el navegador; este script
-sirve para desarrollo y pruebas.)
+La app hace la misma conversión en el navegador (js/importador.js, botón
+«Cargar catálogo»), y además valida. Si se cambia una, cambiar la otra:
+tests/importacion.js comprueba que ambas dan el mismo resultado.
 """
 import json, sys, unicodedata, re
 from openpyxl import load_workbook
@@ -13,17 +14,26 @@ def clave(texto):
     return t
 
 HOJAS = ["Empresa", "Modelos", "Perfiles", "Componentes", "Cubiertas", "Equipos", "Obra local"]
+# Columnas que se guardan como número aunque vengan como texto ("1,4")
+NUMERICAS = ("precio", "precio_unitario", "movilizacion", "montaje", "hoyos_y_dados")
+NUMERO = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$", re.I)
 
 def leer(ws):
-    cab = [clave(c.value) for c in ws[4] if c.value]
+    cab = [clave(c.value) if c.value not in (None, "") else None for c in ws[4]]
     filas = []
-    for fila in ws.iter_rows(min_row=6, values_only=True):
+    for n, fila in enumerate(ws.iter_rows(min_row=6, values_only=True), start=6):
         if not fila or fila[0] in (None, ""):
             continue
-        d = {k: v for k, v in zip(cab, fila) if v not in (None, "")}
-        for k in ("precio", "precio_unitario"):
-            if isinstance(d.get(k), str):
-                d[k] = float(d[k].replace(",", "."))
+        d = {k: v for k, v in zip(cab, fila) if k and v not in (None, "")}
+        for k in NUMERICAS:
+            v = d.get(k)
+            if isinstance(v, str):
+                t = v.strip().replace(",", ".", 1)
+                if NUMERO.match(t):
+                    d[k] = float(t)
+                else:
+                    print(f"Aviso: {ws.title} fila {n}, {k} = {v!r} no es un número: se trata como sin precio", file=sys.stderr)
+                    del d[k]
         filas.append(d)
     return filas
 

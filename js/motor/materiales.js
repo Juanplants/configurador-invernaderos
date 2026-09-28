@@ -10,6 +10,10 @@
 
   const r1 = (x) => Math.round(x * 10) / 10;
   // Sin precio (vacío o no numérico) → importe null y aviso «sin precio», nunca NaN
+  // Reglas de cantidad que entiende calcular() (el importador valida contra esta lista)
+  const REGLAS = ['por_pilar', 'por_pilar_hastial', 'por_portico_nave', 'lineas_x_longitud',
+    'superficie_cubierta', 'superficie_cerramiento', 'perimetro', 'por_ventana', 'fija',
+    'porcentaje', 'formula'];
   const conPrecio = (p) => typeof p === 'number' && Number.isFinite(p);
 
   // "A|B" → variante según la posición del modelo en la columna Modelos
@@ -128,7 +132,7 @@
     return { lineas, errores };
   }
 
-  const API = { calcular, componentesActivos, buscar, variante };
+  const API = { calcular, componentesActivos, buscar, variante, REGLAS };
   raiz.MOTOR = Object.assign(raiz.MOTOR || {}, { materiales: API });
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
