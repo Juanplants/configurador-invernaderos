@@ -16,7 +16,11 @@
   const COTA_1 = 8, COTA_2 = 16;
   const SUELO_EXTRA = 4;
 
-  function alzadoLateral({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null, lateral = null }) {
+  function alzadoLateral(datos) {
+    return H.mejorEscala((e) => dibujarLateral(datos, e));
+  }
+
+  function dibujarLateral({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null, lateral = null }, escala) {
     const reg = new H.Registro();
     const partes = [H.fondo()];
     const hc = g.altura_canal, hm = g.altura_cumbrera;
@@ -27,9 +31,8 @@
       w: DIBUJO.w - BANDA.izquierda - BANDA.derecha - 2 * BANDA.margen,
       h: DIBUJO.h - BANDA.arriba - BANDA.abajo - 2 * BANDA.margen
     };
-    const cabe = (e) => g.largo * 1000 / e + 2 * SUELO_EXTRA <= disp.w && hm * 1000 / e + 3 <= disp.h;
-    const escala = H.ESCALAS.find(cabe) || H.ESCALAS[H.ESCALAS.length - 1];
     const k = 1000 / escala;
+    if (g.largo * k + 2 * SUELO_EXTRA > disp.w || hm * k + 3 > disp.h) return { cabe: false, fallos: [], escala, dibujo: {} };
     const Wp = g.largo * k, Hp = hm * k;
     const x0 = disp.x + (disp.w - Wp) / 2, xN = x0 + Wp;
     const ySuelo = disp.y + (disp.h + Hp) / 2;
@@ -109,12 +112,12 @@
 
     return {
       svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`,
-      escala, cajas: reg.cajas, fallos: reg.fallos,
+      escala, cajas: reg.cajas, fallos: reg.fallos, cabe: true,
       dibujo: { x: x0, y: yCumbrera, w: Wp, h: Hp, disponible: disp }
     };
   }
 
-  const API = { alzadoLateral };
+  const API = { alzadoLateral, dibujarLateral };
   raiz.PLANOS_A3 = Object.assign(raiz.PLANOS_A3 || {}, API);
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

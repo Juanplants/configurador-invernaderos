@@ -14,8 +14,10 @@
   const CAJETIN = { x: MARCO.x + MARCO.w - 180, y: MARCO.y + MARCO.h - 50, w: 180, h: 50 };
   const LEYENDA = { x: MARCO.x, y: CAJETIN.y, w: CAJETIN.x - MARCO.x, h: CAJETIN.h };
   const DIBUJO = { x: MARCO.x, y: MARCO.y, w: MARCO.w, h: CAJETIN.y - MARCO.y };
-  // UNE-EN ISO 5455 (serie 1-2-5); las dos últimas, fuera del rango habitual
-  const ESCALAS = [20, 50, 100, 200, 500, 1000, 2000, 5000];
+  // UNE-EN ISO 5455 (1:20, 1:50, 1:100, 1:200, 1:500, 1:1000, 1:2000) más las
+  // intermedias habituales en construcción (1:250, 1:300, 1:400)
+  const ESCALAS = [20, 50, 100, 200, 250, 300, 400, 500, 1000, 2000];
+  const NOTA_CAJETIN = 'Plano informativo de oferta. No válido para ejecución ni tramitación.';
 
   // Grosores de línea (mm) por elemento
   const LINEA = {
@@ -112,11 +114,38 @@
 
   const fmtCota = (m) => m.toFixed(2).replace('.', ',');
 
-  function elegirEscala(ancho_m, alto_m, disponible) {
-    for (const e of ESCALAS) {
-      if (ancho_m * 1000 / e <= disponible.w && alto_m * 1000 / e <= disponible.h) return e;
+  // La mayor escala con la que la hoja cabe entera: dibujar(E) debe devolver
+  // { cabe, fallos, … }; se acepta la primera sin fallos (cotas, ejes y rótulos
+  // obligatorios colocados). Si ninguna vale, la última intentada.
+  function mejorEscala(dibujar, escalas = ESCALAS) {
+    let ultima = null;
+    for (const e of escalas) {
+      const h = dibujar(e);
+      if (h.cabe && !h.fallos.length) return h;
+      if (h.cabe || !ultima) ultima = h;
     }
-    return ESCALAS[ESCALAS.length - 1];
+    return ultima;
+  }
+  const ocupacion = (d) => Math.max(d.w / d.disponible.w, d.h / d.disponible.h);
+
+  // Puertas en los hastiales: primero una por nave en el frontal (hastial 0),
+  // el resto en el trasero. Cada una en el hueco entre pilares de hastial más
+  // cercano al centro de la nave en el que quepa; si no cabe en ninguno, centrada.
+  function puertasEnHastiales(g, modelo, puertas) {
+    if (!puertas || !puertas.cantidad || !(puertas.ancho > 0) || !(puertas.alto > 0)) return [];
+    const w = g.ancho_nave;
+    const porNave = Math.max(Math.round(w / (modelo.sep_pilares_hastial || w)) - 1, 0);
+    const marcas = [0, ...Array.from({ length: porNave }, (_, q) => (q + 1) * w / (porNave + 1)), w];
+    const huecos = marcas.slice(1).map((b, i) => ({ c: (marcas[i] + b) / 2, luz: b - marcas[i] }))
+      .filter(h => h.luz >= puertas.ancho + 0.2 - 1e-9)  // holgura de 10 cm a cada lado
+      .sort((a, b) => Math.abs(a.c - w / 2) - Math.abs(b.c - w / 2));
+    const centro = huecos.length ? huecos[0].c : w / 2;
+    const lista = [];
+    for (let i = 0; i < Math.min(puertas.cantidad, 2 * g.naves); i++) {
+      const hastial = i < g.naves ? 0 : 1, nave = i % g.naves;
+      lista.push({ hastial, nave, centro: nave * w + centro, ancho: puertas.ancho, alto: puertas.alto, entrePilares: huecos.length > 0 });
+    }
+    return lista;
   }
 
   // ---------- Cotas en cadena ----------
@@ -250,12 +279,17 @@
       partes.push(rect(cel, LINEA.cajetin));
       const pad = 1.2;
       const interior = { x: cel.x + pad, y: cel.y + 0.6, w: cel.w - 2 * pad, h: cel.h - 1.2 };
-      partes.push(textoRegistrado(reg, [{ x: interior.x, y: cel.y + 0.6 + ASC * 1.8, ancla: 'start' }],
-        c.etiqueta, 1.8, { limite: interior, tipo: 'cajetin', ancla: 'start' }));
       const tam = c.tam || 3;
       const valor = ajustar(c.valor, tam, interior.w);
-      partes.push(textoRegistrado(reg, [{ x: interior.x, y: cel.y + cel.h - 1 - DESC * tam, ancla: 'start' }],
-        valor, tam, { limite: interior, tipo: 'cajetin', peso: c.peso }));
+      if (c.etiqueta) {
+        partes.push(textoRegistrado(reg, [{ x: interior.x, y: cel.y + 0.6 + ASC * 1.8, ancla: 'start' }],
+          c.etiqueta, 1.8, { limite: interior, tipo: 'cajetin', ancla: 'start' }));
+        partes.push(textoRegistrado(reg, [{ x: interior.x, y: cel.y + cel.h - 1 - DESC * tam, ancla: 'start' }],
+          valor, tam, { limite: interior, tipo: 'cajetin', peso: c.peso }));
+      } else {
+        const y = cel.y + cel.h / 2 + (ASC - DESC) * tam / 2;
+        partes.push(textoRegistrado(reg, [{ x: cel.x + cel.w / 2, y, ancla: 'middle' }], valor, tam, { limite: interior, tipo: 'cajetin', peso: c.peso }));
+      }
     }
     return partes.join('');
   }
@@ -267,14 +301,16 @@
       + linea(LEYENDA.x, LEYENDA.y, CAJETIN.x, LEYENDA.y, LINEA.cajetin);
   }
 
-  // simbolos: [[svg centrado en 0,0 (±4 × ±1 mm), texto]]; notas: líneas bajo los símbolos
-  function hojaBase(reg, { escala, titulo, numero, g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', simbolos = [], notas = [] }) {
+  // simbolos: [[svg centrado en 0,0 (±4 × ±1 mm), texto]] (hasta 9, en 3 columnas);
+  // notas: líneas bajo los símbolos; norte: ángulo del norte en el papel (grados
+  // desde arriba, horario) o null para no dibujarlo
+  function hojaBase(reg, { escala, titulo, numero, g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', simbolos = [], notas = [], norte = null }) {
     const partes = [];
     const LZ = { x: LEYENDA.x + 2, y: LEYENDA.y + 1, w: LEYENDA.w - 4, h: LEYENDA.h - 2 };
     partes.push(textoRegistrado(reg, [{ x: LZ.x + 1, y: LZ.y + 4, ancla: 'start' }], 'LEYENDA', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
-    simbolos.slice(0, 6).forEach(([svg, t], i) => {
+    simbolos.slice(0, 9).forEach(([svg, t], i) => {
       const col = Math.floor(i / 3), fila = i % 3;
-      const cx = LZ.x + 6 + col * 45, cy = LZ.y + 10 + fila * 6;
+      const cx = LZ.x + 6 + col * 44, cy = LZ.y + 10 + fila * 6;
       partes.push(`<g transform="translate(${cx} ${cy})">${svg}</g>`);
       reg.ocupar({ x: cx - 4.2, y: cy - 1.2, w: 8.4, h: 2.4 }, 'leyenda_simbolo');
       partes.push(textoRegistrado(reg, [{ x: cx + 6, y: cy + 0.8, ancla: 'start' }], t, 2.2, { limite: LZ, tipo: 'leyenda' }));
@@ -282,21 +318,30 @@
     const lineas = notas.slice(0, 4).concat([`Escala 1:${escala} en formato A3 (420 × 297 mm).`]);
     lineas.forEach((t, i) => partes.push(textoRegistrado(reg, [{ x: LZ.x + 1, y: LZ.y + 30 + i * 3.6, ancla: 'start' }],
       ajustar(t, 2.2, LZ.w - 2), 2.2, { limite: LZ, tipo: 'leyenda' })));
-    partes.push(textoRegistrado(reg, [{ x: LZ.x + 100, y: LZ.y + 4, ancla: 'start' }], 'ESCALA GRÁFICA', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
-    partes.push(escalaGrafica(reg, LZ.x + 100, LZ.y + 9, escala, LZ));
+    partes.push(textoRegistrado(reg, [{ x: LZ.x + 136, y: LZ.y + 4, ancla: 'start' }], 'ESCALA GRÁFICA', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
+    partes.push(escalaGrafica(reg, LZ.x + 136, LZ.y + 9, escala, LZ));
+    if (norte !== null && norte !== undefined) {
+      const cx = LZ.x + LZ.w - 9, cy = LZ.y + LZ.h - 11, r = 6;
+      partes.push(`<g transform="translate(${n(cx)} ${n(cy)})"><circle r="${r}" fill="#fff" stroke="#000" stroke-width="${LINEA.cota}"/>`
+        + `<g transform="rotate(${n(norte)})"><path d="M0,-5 L2.2,3 L0,1.6 L-2.2,3 Z" fill="#000"/></g></g>`);
+      reg.ocupar({ x: cx - r, y: cy - r, w: 2 * r, h: 2 * r }, 'norte');
+      const [nx, ny] = [cx + Math.sin(norte * Math.PI / 180) * (r + 2.6), cy - Math.cos(norte * Math.PI / 180) * (r + 2.6) + 1];
+      partes.push(textoRegistrado(reg, [{ x: nx, y: ny }, { x: cx - r - 3, y: cy + 1 }], 'N', 2.5, { limite: LZ, tipo: 'leyenda', peso: 700 }));
+    }
 
     const proy = [proyecto.cliente, proyecto.codigo].filter(Boolean).join(' · ') || '—';
     partes.push(cajetin(reg, [
-      { x: 0, y: 0, w: 100, h: 14, etiqueta: 'DISTRIBUIDOR', valor: empresa.nombre || '—', tam: 3.5, peso: 700 },
-      { x: 100, y: 0, w: 80, h: 14, etiqueta: 'PLANO', valor: titulo, tam: 4, peso: 700 },
-      { x: 0, y: 14, w: 100, h: 12, etiqueta: 'CLIENTE · PROYECTO', valor: proy },
-      { x: 100, y: 14, w: 40, h: 12, etiqueta: 'ESCALA', valor: '1:' + escala, tam: 3.5, peso: 700 },
-      { x: 140, y: 14, w: 40, h: 12, etiqueta: 'FORMATO', valor: 'A3' },
-      { x: 0, y: 26, w: 100, h: 12, etiqueta: 'UBICACIÓN', valor: proyecto.ubicacion || '—' },
-      { x: 100, y: 26, w: 40, h: 12, etiqueta: 'FECHA', valor: fecha || '—' },
-      { x: 140, y: 26, w: 40, h: 12, etiqueta: 'PLANO N.º', valor: numero },
-      { x: 0, y: 38, w: 100, h: 12, etiqueta: 'MODELO', valor: modelo.nombre || '—' },
-      { x: 100, y: 38, w: 80, h: 12, etiqueta: 'DIMENSIONES', valor: `${g.naves} × ${fmtCota(g.ancho_nave)} × ${fmtCota(g.largo)} m · ${Math.round(g.area).toLocaleString('es-ES')} m²` }
+      { x: 0, y: 0, w: 100, h: 12, etiqueta: 'DISTRIBUIDOR', valor: empresa.nombre || '—', tam: 3.5, peso: 700 },
+      { x: 100, y: 0, w: 80, h: 12, etiqueta: 'PLANO', valor: titulo, tam: 4, peso: 700 },
+      { x: 0, y: 12, w: 100, h: 10, etiqueta: 'CLIENTE · PROYECTO', valor: proy },
+      { x: 100, y: 12, w: 40, h: 10, etiqueta: 'ESCALA', valor: '1:' + escala, tam: 3.5, peso: 700 },
+      { x: 140, y: 12, w: 40, h: 10, etiqueta: 'FORMATO', valor: 'A3' },
+      { x: 0, y: 22, w: 100, h: 10, etiqueta: 'UBICACIÓN', valor: proyecto.ubicacion || '—' },
+      { x: 100, y: 22, w: 40, h: 10, etiqueta: 'FECHA', valor: fecha || '—' },
+      { x: 140, y: 22, w: 40, h: 10, etiqueta: 'PLANO N.º', valor: numero },
+      { x: 0, y: 32, w: 100, h: 10, etiqueta: 'MODELO', valor: modelo.nombre || '—' },
+      { x: 100, y: 32, w: 80, h: 10, etiqueta: 'DIMENSIONES', valor: `${g.naves} × ${fmtCota(g.ancho_nave)} × ${fmtCota(g.largo)} m · ${Math.round(g.area).toLocaleString('es-ES')} m²` },
+      { x: 0, y: 42, w: 180, h: 8, valor: NOTA_CAJETIN, tam: 2.4, peso: 700 }
     ]));
     return partes.join('');
   }
@@ -357,7 +402,7 @@
   const API = {
     A3, MARCO, CAJETIN, LEYENDA, DIBUJO, ESCALAS, LINEA, FUENTE, ASC, DESC,
     anchoTexto, cajaTexto, solapan, dentro, Registro,
-    esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, elegirEscala,
+    NOTA_CAJETIN, esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, mejorEscala, ocupacion, puertasEnHastiales,
     cadena, burbujas, escalaGrafica, cajetin, fondo, hojaBase, rotulo, puntosArco, puntoDesdeCumbrera
   };
   raiz.HOJA = API;
