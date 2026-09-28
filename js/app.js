@@ -97,6 +97,55 @@ function tablaIncidencias(lista_) {
   </table>`;
 }
 
+// ------- Guardar y abrir proyecto (.json) -------
+function descargarArchivo(contenido, nombre, tipo) {
+  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: nombre });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function guardarProyecto() {
+  const archivo = PROYECTO.serializar(state, CATALOGO, catalogoImportado);
+  descargarArchivo(JSON.stringify(archivo, null, 2), EXPORTAR.nombreArchivo(state.codigoProyecto, 'proyecto', new Date(), 'json'), 'application/json');
+}
+
+// Pone en pantalla un estado leído de archivo (el catálogo no cambia)
+function aplicarEstadoProyecto(e) {
+  aplicarCatalogo(CATALOGO, catalogoImportado); // valores por defecto del catálogo actual
+  for (const [k, v] of Object.entries(e)) {
+    if (k === 'opcionales') state.opcionales = new Set(v);
+    else if (k === 'parcela') state.parcela = Object.assign({ largo: '', ancho: '', orientacion: 0, girado: false }, v);
+    else state[k] = v;
+  }
+  depurarSeleccion();
+  // Campos de texto que render() no reescribe
+  const poner = (id, v) => { document.getElementById(id).value = v ?? ''; };
+  poner('cliente', state.cliente); poner('ubicacion', state.ubicacion); poner('codigo-proyecto', state.codigoProyecto);
+  poner('viento', state.viento_kmh);
+  poner('parcela-largo', state.parcela.largo); poner('parcela-ancho', state.parcela.ancho); poner('parcela-orientacion', state.parcela.orientacion);
+  document.getElementById('parcela-girado').checked = !!state.parcela.girado;
+  if (!PLANOS_VISTAS[state.vistaActual]) state.vistaActual = 'planta';
+  render();
+}
+
+function abrirProyecto(archivo) {
+  const lector = new FileReader();
+  lector.onload = () => {
+    const r = PROYECTO.leer(String(lector.result), CATALOGO, catalogoImportado);
+    if (!r.errores.length) aplicarEstadoProyecto(r.estado);
+    const lista = (xs) => `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    document.getElementById('dialogo-catalogo-contenido').innerHTML = r.errores.length
+      ? `<h3 class="mal">✗ El proyecto no se ha abierto</h3><p><strong>${esc(archivo.name)}</strong></p>${lista(r.errores)}${r.avisos.length ? `<h4>Avisos</h4>${lista(r.avisos)}` : ''}`
+      : `<h3 class="bien">✓ Proyecto abierto</h3><p><strong>${esc(archivo.name)}</strong>${state.cliente ? ` · ${esc(state.cliente)}` : ''}${state.codigoProyecto ? ` · ${esc(state.codigoProyecto)}` : ''}</p>`
+        + (r.avisos.length ? `<h4>${r.avisos.length === 1 ? 'Aviso' : 'Avisos'}</h4><div class="avisos-proyecto">${r.avisos.map(a => `<div class="aviso ambar">${esc(a)}</div>`).join('')}</div>` : '<p class="hint">Calculado con el mismo catálogo con el que se guardó.</p>');
+    document.body.classList.add('dialogo-abierto');
+  };
+  lector.readAsText(archivo);
+}
+
 function mostrarResultadoCatalogo(nombreArchivo, r, guardado) {
   const n = (k, uno, varios) => `${k} ${k === 1 ? uno : varios}`;
   let html;
@@ -396,7 +445,10 @@ function renderMateriales({ r }) {
 
   document.getElementById('materiales').innerHTML = `
     <h3>Lista de materiales
-      <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
+      <span class="acciones-materiales">
+        <button id="btn-excel" class="btn-secundario">&#11015; Excel</button>
+        <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
+      </span>
     </h3>
     <table class="tabla-materiales">
       <tr><th>Partida</th>${ver ? '<th>Cálculo</th>' : ''}<th class="n">Cantidad</th><th class="n">kg</th><th class="n">Precio u.</th><th class="n">Importe</th></tr>
@@ -468,6 +520,17 @@ function renderPlano({ r }) {
   });
 }
 
+// ------- Lista de materiales en Excel -------
+function descargarExcel() {
+  const { r, modelo, error } = calcularTodo();
+  if (error) return;
+  EXCEL.descargar(XLSX, {
+    r, catalogo: CATALOGO, modelo,
+    proyecto: { codigo: state.codigoProyecto, cliente: state.cliente, ubicacion: state.ubicacion },
+    fecha: new Date().toLocaleDateString('es-ES')
+  }, EXPORTAR.nombreArchivo(state.codigoProyecto, 'materiales', new Date(), 'xlsx'));
+}
+
 // ------- Planos en PDF -------
 async function descargarPlanos(soloEsta) {
   const estado = document.getElementById('pdf-estado');
@@ -524,6 +587,13 @@ function bindEvents() {
   on('parcela-ancho', 'input', el => { state.parcela.ancho = el.value; });
   on('parcela-orientacion', 'input', el => { state.parcela.orientacion = el.value; });
   on('parcela-girado', 'change', el => { state.parcela.girado = el.checked; });
+  document.getElementById('btn-guardar-proyecto').addEventListener('click', guardarProyecto);
+  document.getElementById('btn-abrir-proyecto').addEventListener('click', () => document.getElementById('archivo-proyecto').click());
+  document.getElementById('archivo-proyecto').addEventListener('change', e => {
+    const archivo = e.target.files[0];
+    e.target.value = '';
+    if (archivo) abrirProyecto(archivo);
+  });
   document.getElementById('btn-pdf-todos').addEventListener('click', () => descargarPlanos(false));
   document.getElementById('btn-pdf-hoja').addEventListener('click', () => descargarPlanos(true));
   on('opciones', 'change', el => {
@@ -553,6 +623,7 @@ function bindEvents() {
     });
   });
   document.getElementById('materiales').addEventListener('click', e => {
+    if (e.target.id === 'btn-excel') descargarExcel();
     if (e.target.id === 'btn-ver-calculo') {
       state.verCalculo = !state.verCalculo;
       render();

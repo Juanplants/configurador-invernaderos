@@ -18,8 +18,8 @@
   const limpiar = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 
-  const nombreArchivo = (codigo, parte, fecha = new Date()) =>
-    `${limpiar(codigo) || 'proyecto'}_${parte}_${fechaISO(fecha)}.pdf`;
+  const nombreArchivo = (codigo, parte, fecha = new Date(), extension = 'pdf') =>
+    `${limpiar(codigo) || 'proyecto'}_${parte}_${fechaISO(fecha)}.${extension}`;
 
   async function pdf(hojas, { titulo = 'Planos', autor = '' } = {}) {
     if (!raiz.jspdf || !raiz.jspdf.jsPDF) throw new Error('Falta lib/jspdf.umd.min.js');

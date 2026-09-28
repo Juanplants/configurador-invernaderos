@@ -1,10 +1,11 @@
 // ============================================================
 // Generación de la propuesta comercial (HTML imprimible a PDF)
 // ============================================================
-// Todo sale del catálogo (empresa, modelo, textos de cada partida) y
-// del resultado del motor. Los valores con origen «estimado» llevan
-// asterisco: la propuesta nunca los presenta como dato del fabricante.
-// La traza del cálculo no se incluye (solo la ve el distribuidor).
+// Todo sale del catálogo (empresa, modelo, categorías y texto de propuesta
+// de cada partida) y del resultado del motor. Cualquier valor que sea o que
+// dependa de un dato con origen «estimado» lleva asterisco: la propuesta nunca
+// lo presenta como dato del fabricante. La traza del cálculo no se incluye.
+// Los planos van en páginas A3 apaisadas a escala real (el resto, A4).
 
 const PROPUESTA = {
 
@@ -20,6 +21,18 @@ const PROPUESTA = {
       ubicacion: state.ubicacion || '—',
       categorias: Object.keys(r.precio.categorias)
     };
+    // Qué valores dependen de datos estimados
+    const est = (l) => l.origen === 'estimado';
+    const refDe = (id) => ['equipos', 'cubiertas'].map(h => (catalogo[h] || []).find(x => x.id === id)).find(Boolean);
+    ctx.estimado = {
+      modelo: modelo.origen === 'estimado',
+      categoria: (cat) => r.lineas.some(l => l.categoria === cat && est(l)),
+      acero: r.lineas.some(l => l.kg && est(l)),
+      ventilacion: r.lineas.some(l => { const f = refDe(l.ref); return f && (f.tipo === 'ventana' || f.tipo === 'malla') && est(l); })
+        || (catalogo.cubiertas || []).some(c => c.tipo === 'malla' && c.origen === 'estimado'),
+      obra: !!(r.precio.obra && r.precio.obra.origen === 'estimado')
+    };
+    ctx.estimado.total = Object.keys(r.precio.categorias).some(ctx.estimado.categoria) || ctx.estimado.obra;
     return `
       <div class="propuesta">
         ${this._portada(ctx)}
@@ -32,6 +45,7 @@ const PROPUESTA = {
         ${this._precios(ctx)}
         ${this._condiciones(ctx)}
         ${this._garantia(ctx)}
+        ${this._datosOferta(ctx)}
       </div>
     `;
   },
@@ -43,15 +57,15 @@ const PROPUESTA = {
   _num(n, d = 2) { return (n ?? 0).toLocaleString('es-ES', { maximumFractionDigits: d }); },
   _eur(n) { return (n ?? 0).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; },
   _est(origen) { return origen === 'estimado' ? '<sup class="est-marca">*</sup>' : ''; },
+  _marca(estimado) { return estimado ? '<sup class="est-marca">*</sup>' : ''; },
   _lista(texto) {
     return String(texto || '').split(/[;,]/).map(s => s.trim()).filter(Boolean);
   },
   _familia(modelo) {
     return { multitunel: 'MULTITÚNEL', venlo: 'VENLO' }[modelo.familia] || '';
   },
-  _hayEstimados({ r, modelo }) {
-    return modelo.origen === 'estimado' || r.lineas.some(l => l.origen === 'estimado')
-      || (r.precio.obra && r.precio.obra.origen === 'estimado');
+  _hayEstimados({ r, modelo, estimado }) {
+    return modelo.origen === 'estimado' || r.lineas.some(l => l.origen === 'estimado') || estimado.obra || estimado.ventilacion;
   },
   _notaEstimados(ctx) {
     return this._hayEstimados(ctx)
@@ -61,6 +75,7 @@ const PROPUESTA = {
 
   // ---------- Secciones ----------
   _portada({ emp, modelo, codigo, cliente, ubicacion, fecha }) {
+    const catalogo = [emp.version_catalogo ? `catálogo ${emp.version_catalogo}` : '', emp.fecha || ''].filter(Boolean).join(' · ');
     return `
       <section class="page portada">
         <div class="logo-top">${this._esc(emp.nombre || 'CONFIGURADOR INVERNADEROS')}</div>
@@ -74,6 +89,10 @@ const PROPUESTA = {
         <div class="titulo">
           <h1>PRESUPUESTO DE INVERNADERO ${this._familia(modelo)}</h1>
           <h2>${this._esc(modelo.nombre)} · Descripción técnica</h2>
+        </div>
+        <div class="empresa-portada">
+          Oferta presentada por <strong>${this._esc(emp.nombre || '—')}</strong>
+          ${catalogo ? `<br><small>${this._esc(catalogo)}</small>` : ''}
         </div>
         <div class="disclaimer-portada">
           Las imágenes y planos no son contractuales
@@ -122,8 +141,9 @@ const PROPUESTA = {
     `;
   },
 
-  _dimensiones({ g, r }) {
+  _dimensiones({ g, r, estimado }) {
     const v = r.ventilacion;
+    const m = this._marca(estimado.modelo);  // la flecha del arco es dato del modelo
     return `
       <section>
         <h3>1.2 Dimensiones del invernadero</h3>
@@ -134,12 +154,12 @@ const PROPUESTA = {
           <tr><td>Nº de naves</td><td>${g.naves}</td></tr>
           <tr><td>Ancho de nave</td><td>${this._num(g.ancho_nave)} m</td></tr>
           <tr><td>Altura a canal</td><td>${this._num(g.altura_canal)} m</td></tr>
-          <tr><td>Altura a cumbrera</td><td>${this._num(g.altura_cumbrera)} m</td></tr>
+          <tr><td>Altura a cumbrera</td><td>${this._num(g.altura_cumbrera)} m${m}</td></tr>
           <tr><td>Separación entre pórticos</td><td>${this._num(g.sep_porticos)} m</td></tr>
           <tr><td>Nº de pórticos</td><td>${g.porticos}</td></tr>
           <tr><td>Nº de pilares (incl. hastiales)</td><td>${g.pilares + g.pilares_hastial}</td></tr>
-          <tr><td>Volumen interior</td><td>${this._num(g.volumen, 0)} m³</td></tr>
-          <tr><td>Ventilación efectiva (con malla)</td><td>${this._num(v.pct_total * 100, 1)} % del suelo · cenital ${this._num(v.pct_cenital * 100, 1)} %</td></tr>
+          <tr><td>Volumen interior</td><td>${this._num(g.volumen, 0)} m³${m}</td></tr>
+          <tr><td>Ventilación efectiva (con malla)</td><td>${this._num(v.pct_total * 100, 1)} % del suelo · cenital ${this._num(v.pct_cenital * 100, 1)} %${this._marca(estimado.ventilacion)}</td></tr>
           <tr class="total"><td>Superficie total invernadero</td><td>${this._num(g.area)} m²</td></tr>
         </table>
       </section>
@@ -148,31 +168,27 @@ const PROPUESTA = {
 
   _planos(planos) {
     if (!planos) return '';
-    const svg = (p) => `<svg viewBox="${p.viewBox}" xmlns="http://www.w3.org/2000/svg">${p.svg}</svg>`;
-    const pagina = (titulo, p) => `
-      <section class="page planos-page">
-        <h3>${titulo}</h3>
-        <div class="plano-wrap">${svg(p)}</div>
-      </section>
-    `;
+    const orden = [['planta', 'Planta general'], ['alzadoFrontal', 'Alzado frontal'], ['alzadoLateral', 'Alzado lateral'],
+      ['seccion', 'Sección transversal'], ['emplazamiento', 'Emplazamiento']].filter(([k]) => planos[k]);
+    const hoja = ([k, titulo]) => `
+      <section class="hoja-a3" data-plano="${k}" aria-label="${titulo}">
+        <svg class="plano-a3" viewBox="${planos[k].viewBox}" xmlns="http://www.w3.org/2000/svg">${planos[k].svg}</svg>
+      </section>`;
     return `
       <section class="page">
         <h3>1.3 Planos del proyecto</h3>
         <p>
-          A continuación se incluyen los planos del invernadero: planta general,
-          alzado frontal, alzado lateral y sección transversal. Todas las cotas
-          están expresadas en metros. Cada plano está dibujado a escala sobre A3
-          (planta 1:${planos.planta.escala}, sección 1:${planos.seccion.escala});
-          reducidos en este documento, la escala válida es la gráfica de cada
-          plano. Las vistas son orientativas y no contractuales.
+          Se incluyen a continuación, en hojas A3, los planos del invernadero:
+          ${orden.map(([, t]) => t.toLowerCase()).join(', ')}. Todas las cotas están
+          expresadas en metros. Impresos en A3 al 100 % (tamaño real), la escala
+          indicada en cada cajetín es exacta; a otro tamaño, vale la escala gráfica.
         </p>
-        <h4>Planta general</h4>
-        <div class="plano-wrap">${svg(planos.planta)}</div>
+        <p class="disclaimer">
+          Planos informativos de oferta. No válidos para ejecución ni tramitación.
+        </p>
+        <ol>${orden.map(([k, t]) => `<li>${t} (1:${planos[k].escala})</li>`).join('')}</ol>
       </section>
-      ${pagina('Alzado frontal', planos.alzadoFrontal)}
-      ${pagina('Alzado lateral', planos.alzadoLateral)}
-      ${pagina('Sección transversal', planos.seccion)}
-      ${planos.emplazamiento ? pagina('Emplazamiento', planos.emplazamiento) : ''}
+      ${orden.map(hoja).join('')}
     `;
   },
 
@@ -238,19 +254,20 @@ const PROPUESTA = {
       <section class="page">
         <h2>2. COMPOSICIÓN</h2>
         ${capitulos}
-        <p><strong>Acero total:</strong> ${this._num(r.precio.kg_acero, 0)} kg (${this._num(r.precio.kg_acero_m2, 2)} kg/m²).</p>
+        <p><strong>Acero total:</strong> ${this._num(r.precio.kg_acero, 0)} kg (${this._num(r.precio.kg_acero_m2, 2)} kg/m²)${this._marca(ctx.estimado.acero)}.</p>
         ${this._notaEstimados(ctx)}
       </section>
     `;
   },
 
   _precios(ctx) {
-    const { r, g } = ctx;
+    const { r, g, estimado } = ctx;
     const p = r.precio;
+    const t = this._marca(estimado.total);
     const filas = Object.entries(p.categorias)
-      .map(([cat, imp]) => `<tr><td>${this._esc(cat)}</td><td class="num">${this._eur(imp)}</td></tr>`).join('');
+      .map(([cat, imp]) => `<tr><td>${this._esc(cat)}</td><td class="num">${this._eur(imp)}${this._marca(estimado.categoria(cat))}</td></tr>`).join('');
     const obra = p.obra
-      ? `<tr><td>Montaje y obra local (${this._esc(p.obra.zona)})${this._est(p.obra.origen)}</td><td class="num">${this._eur(p.obra.total)}</td></tr>`
+      ? `<tr><td>Montaje y obra local (${this._esc(p.obra.zona)})</td><td class="num">${this._eur(p.obra.total)}${this._est(p.obra.origen)}</td></tr>`
       : '';
     return `
       <section class="page">
@@ -260,14 +277,15 @@ const PROPUESTA = {
           <tr><th>Descripción</th><th class="num">Importe (${this._esc(p.moneda)})</th></tr>
           ${filas}
           ${obra}
-          <tr class="subtotal"><td>BASE IMPONIBLE</td><td class="num">${this._eur(p.base_imponible)}</td></tr>
-          <tr class="iva"><td>IVA ${this._num(p.iva_pct * 100, 0)} %</td><td class="num">${this._eur(p.iva)}</td></tr>
-          <tr class="total"><td>TOTAL PRESUPUESTO (IVA incluido)</td><td class="num">${this._eur(p.total)}</td></tr>
+          <tr class="subtotal"><td>BASE IMPONIBLE</td><td class="num">${this._eur(p.base_imponible)}${t}</td></tr>
+          <tr class="iva"><td>IVA ${this._num(p.iva_pct * 100, 0)} %</td><td class="num">${this._eur(p.iva)}${t}</td></tr>
+          <tr class="total"><td>TOTAL PRESUPUESTO (IVA incluido)</td><td class="num">${this._eur(p.total)}${t}</td></tr>
         </table>
-        <p>Precio medio sin IVA: <strong>${this._num(p.eur_m2, 2)} €/m²</strong>.</p>
+        <p>Precio medio sin IVA: <strong>${this._num(p.eur_m2, 2)} €/m²</strong>${t}.</p>
+        ${estimado.total ? '<p class="nota">* Importes calculados con valores estimados, pendientes de confirmación por el fabricante.</p>' : ''}
         ${p.obra ? '' : '<p class="nota">No incluye montaje ni obra local.</p>'}
         <p class="nota">Importes sujetos a confirmación según datos definitivos de fábrica y condiciones del terreno.</p>
-        ${this._notaEstimados(ctx)}
+        ${estimado.total ? '' : this._notaEstimados(ctx)}
       </section>
     `;
   },
@@ -291,9 +309,26 @@ const PROPUESTA = {
     return `
       <section class="page">
         <h2>5. GARANTÍAS</h2>
-        ${modelo.garantia_estructura ? `<p>Estructura: <strong>${this._num(modelo.garantia_estructura, 0)} años</strong> por defectos de fabricación, sujeta a un montaje correcto y al uso conforme a las cargas declaradas.</p>` : ''}
+        ${modelo.garantia_estructura ? `<p>Estructura: <strong>${this._num(modelo.garantia_estructura, 0)} años</strong>${this._est(modelo.origen)} por defectos de fabricación, sujeta a un montaje correcto y al uso conforme a las cargas declaradas.</p>` : ''}
         ${emp.garantias ? `<p>${this._esc(emp.garantias)}</p>` : ''}
+        ${modelo.origen === 'estimado' && modelo.garantia_estructura ? '<p class="nota">* Valor estimado, pendiente de confirmación por el fabricante.</p>' : ''}
+      </section>
+    `;
+  },
+
+  _datosOferta({ emp, codigo, fecha }) {
+    return `
+      <section>
+        <h3>Datos de la oferta</h3>
+        <table class="tabla">
+          <tr><td>Distribuidor</td><td>${this._esc(emp.nombre || '—')}</td></tr>
+          <tr><td>Referencia</td><td>${this._esc(codigo)}</td></tr>
+          <tr><td>Fecha</td><td>${fecha}</td></tr>
+          <tr><td>Catálogo</td><td>${this._esc([emp.version_catalogo ? `versión ${emp.version_catalogo}` : '', emp.fecha].filter(Boolean).join(' · ') || '—')}</td></tr>
+        </table>
       </section>
     `;
   }
 };
+
+if (typeof module !== 'undefined') module.exports = PROPUESTA;

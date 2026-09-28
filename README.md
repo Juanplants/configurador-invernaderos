@@ -11,6 +11,6 @@ Documentación:
 - [`docs/TRASPASO.md`](docs/TRASPASO.md) — estado actual, cómo probar y siguientes pasos
 - [`docs/README_v0.3.md`](docs/README_v0.3.md) — README original de la v0.3
 
-Pruebas: `node tests/pruebas.js` (motor), `node tests/importacion.js` (importador del catálogo), `node tests/planos.js` (planos); con Playwright, además `tests/planos_navegador.js` y `tests/pdf_navegador.js` (exportación a PDF)
+Pruebas: `node tests/pruebas.js` (motor), `node tests/importacion.js` (importador del catálogo), `node tests/planos.js` (planos), `node tests/salidas.js` (proyecto, Excel y propuesta); con Playwright, además `tests/planos_navegador.js`, `tests/pdf_navegador.js` y `tests/salidas_navegador.js`
 
 > Los precios y datos del catálogo de ejemplo son **estimados** y solo sirven para desarrollar. Cada distribuidor carga su propio catálogo.

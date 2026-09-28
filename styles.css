@@ -483,6 +483,7 @@ body.modo-propuesta { overflow: hidden; }
 .propuesta .tabla .iva td { background: #fff3cd; }
 
 .propuesta .est-marca { color: #b26a00; }
+.propuesta .tabla .total .est-marca { color: #ffd54f; }
 .propuesta .tabla small { color: #666; }
 
 .propuesta .formula {
@@ -507,6 +508,11 @@ body.modo-propuesta { overflow: hidden; }
   font-size: 9pt;
   color: #795548;
 }
+
+/* Planos A3 dentro de la propuesta (en pantalla, reducidos al ancho) */
+.propuesta section.hoja-a3 { margin: 16px 0; }
+.propuesta section.hoja-a3 svg.plano-a3 { display: block; width: 100%; height: auto; border: 1px solid #bbb; }
+.propuesta .empresa-portada { margin-top: 40px; font-size: 12pt; color: #333; }
 
 /* Planos dentro de la propuesta */
 .propuesta .plano-wrap {
@@ -553,6 +559,21 @@ body.modo-propuesta { overflow: hidden; }
     size: A4;
     margin: 18mm 15mm;
   }
+  /* Planos: página A3 apaisada propia, sin márgenes, a escala real */
+  @page plano-a3 {
+    size: A3 landscape;
+    margin: 0;
+  }
+  .propuesta section.hoja-a3 {
+    page: plano-a3;
+    break-before: page;
+    break-after: page;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+  .propuesta section.hoja-a3 svg.plano-a3 { width: 420mm; height: 297mm; border: none; }
 }
 
 /* ============================================================
@@ -613,3 +634,4 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 /* Descarga de planos */
 .plan-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 2px 2px; }
 .plan-acciones .hint { margin: 0; }
+.acciones-materiales { display: inline-flex; gap: 6px; }
