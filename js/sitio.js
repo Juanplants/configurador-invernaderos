@@ -1,28 +1,37 @@
 // ============================================================
-// Cargas del sitio por municipio (CTE DB SE-AE)
+// Cargas del sitio (CTE DB SE-AE)
 // ============================================================
-// Los datos no están en el código: normativa en datos/cte_se_ae.json y
-// municipios en datos/municipios_cte.csv (ver datos/LEEME_municipios.md);
-// herramientas/municipios_a_js.js los junta en datos/municipios.js.
+// El CTE no da tabla por municipio: la zona eólica (figura D.1) y la zona de
+// clima invernal (figura E.2) vienen en mapas y las elige el usuario, con la
+// altitud. Atajo: las capitales de la tabla 3.8 (altitud y nieve). Los datos no
+// están en el código: datos/cte_se_ae.json; una tabla de municipios fiable, si
+// algún día la hay, en datos/municipios_cte.csv (vacía no hace nada).
+// herramientas/municipios_a_js.js junta ambos en datos/municipios.js.
 //
-//   const { municipios, errores } = SITIO.leerCSV(texto)       // tabla de municipios
 //   const errores = SITIO.validarNormativa(normativa)
+//   const c = SITIO.cargas(normativa, { zona_eolica, zona_invierno, altitud, capital }, { categoria, altura })
+//     → { viento: { zona, vb, qb, kmh, ce, qe } | null,
+//         nieve: { origen: 'capital' | 'tabla', sk, kgm2, … } | { fuera: true, ultima } | null }
+//   const { municipios, errores } = SITIO.leerCSV(texto)       // tabla de municipios (opcional)
 //   const idx = SITIO.indice(municipios)                         // búsqueda por nombre y códigos
-//   const c = SITIO.cargas(normativa, municipio, { categoria, altura })
-//     → { viento: { zona, vb, qb, kmh, ce, qe }, nieve: { zona, altitud, sk, kgm2 } | null }
 //
 // Viento: velocidad básica vb de la zona eólica (anejo D). Para comparar con
 // el viento declarado por el fabricante se usa vb en km/h; el coeficiente de
 // exposición ce de la categoría de terreno a la altura de cumbrera y la presión
 // qe = qb · ce son informativos. Nieve: sk de la tabla E.2 según zona climática
-// de invierno y altitud (interpolación lineal entre filas), en kg/m².
+// de invierno y altitud, interpolada linealmente entre altitudes con dato; por
+// encima de la última altitud con dato de la zona, «fuera de tabla, requiere
+// estudio». Con una capital, sk de la tabla 3.8.
 
 (function (raiz) {
+  const ZONAS_EOLICAS = ['A', 'B', 'C'];
+  const ZONAS_INVIERNO = [1, 2, 3, 4, 5, 6, 7];
+  const CATEGORIAS = ['I', 'II', 'III', 'IV', 'V'];
   const COLUMNAS = ['codigo_ine', 'codigo_catastro', 'provincia', 'municipio', 'altitud_m', 'zona_eolica', 'zona_invierno'];
   const KN_A_KG = 1000 / 9.80665;   // kN/m² → kg/m²
   const MS_A_KMH = 3.6;
 
-  const normalizar = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
   // CSV separado por «;» (o «,»), UTF-8, con cabecera. Errores con su fila.
   function leerCSV(texto) {
@@ -58,29 +67,35 @@
     return { municipios, errores, avisos };
   }
 
-  // La normativa tiene que estar completa en lo que se usa; la nieve puede
-  // estar pendiente (entonces no se calcula y se pide a mano)
+  // La normativa tiene que estar completa: viento, categorías, tabla E.2 (null = sin dato) y capitales
   function validarNormativa(n) {
     const errores = [];
     if (!n || typeof n !== 'object') return ['Falta la normativa (datos/cte_se_ae.json).'];
-    for (const z of ['A', 'B', 'C']) {
+    for (const z of ZONAS_EOLICAS) {
       const d = n.viento && n.viento.zonas && n.viento.zonas[z];
       if (!d || !(d.vb > 0) || !(d.qb > 0)) errores.push(`Viento: falta vb o qb de la zona ${z}.`);
     }
-    for (const c of ['I', 'II', 'III', 'IV', 'V']) {
+    for (const c of CATEGORIAS) {
       const d = n.categorias_terreno && n.categorias_terreno[c];
       if (!d || !(d.k > 0) || !(d.L > 0) || !(d.Z > 0) || !d.nombre) errores.push(`Categoría de terreno ${c}: faltan k, L, Z o el nombre.`);
     }
-    if (nieveCompleta(n)) {
-      const t = n.nieve.tabla;
-      if (t.altitudes.some((a, i) => i && a <= t.altitudes[i - 1])) errores.push('Nieve: las altitudes de la tabla E.2 deben ir en orden creciente.');
+    const t = n.nieve && n.nieve.tabla;
+    if (!t || !Array.isArray(t.altitudes) || t.altitudes.length < 2) errores.push('Nieve: falta la tabla E.2 (altitudes y zonas).');
+    else {
+      if (t.altitudes.some((a, i) => typeof a !== 'number' || (i && a <= t.altitudes[i - 1]))) errores.push('Nieve: las altitudes de la tabla E.2 deben ser números en orden creciente.');
+      for (const z of ZONAS_INVIERNO) {
+        const v = t.zonas && t.zonas[z];
+        if (!Array.isArray(v) || v.length !== t.altitudes.length) errores.push(`Nieve, zona ${z}: tantos valores como altitudes (null = sin dato).`);
+        else if (v.some(x => x !== null && !(typeof x === 'number' && x >= 0))) errores.push(`Nieve, zona ${z}: valores no numéricos.`);
+        else if (!v.some(x => x !== null)) errores.push(`Nieve, zona ${z}: sin ningún dato.`);
+      }
     }
+    const caps = n.capitales && n.capitales.lista;
+    if (!Array.isArray(caps) || !caps.length) errores.push('Faltan las capitales de la tabla 3.8.');
+    else caps.forEach((c, i) => {
+      if (!c.nombre || !(c.altitud >= 0) || !(c.sk >= 0)) errores.push(`Capital ${i + 1} (${c.nombre || 'sin nombre'}): faltan nombre, altitud o sk.`);
+    });
     return errores;
-  }
-  function nieveCompleta(n) {
-    const t = n && n.nieve && n.nieve.tabla;
-    return !!(t && Array.isArray(t.altitudes) && t.altitudes.length >= 2
-      && [1, 2, 3, 4, 5, 6, 7].every(z => Array.isArray(t.zonas && t.zonas[z]) && t.zonas[z].length === t.altitudes.length && t.zonas[z].every(v => typeof v === 'number' && v >= 0)));
   }
 
   function indice(municipios) {
@@ -118,28 +133,44 @@
     return F * (F + 7 * c.k);
   }
 
+  // Tabla E.2: interpolación lineal entre las altitudes con dato de la zona
   function nieve(n, zona, altitud) {
-    if (!nieveCompleta(n)) return null;
-    const { altitudes, zonas } = n.nieve.tabla;
-    const v = zonas[zona];
+    const t = n.nieve.tabla;
+    const v = t.zonas[zona];
+    if (!v || !Number.isFinite(altitud)) return null;
+    const puntos = t.altitudes.map((a, i) => [a, v[i]]).filter(([, x]) => x !== null);
+    const ultima = puntos[puntos.length - 1][0];
+    if (altitud > ultima + 1e-9) return { origen: 'tabla', zona, altitud, fuera: true, ultima, sk: null, kgm2: null };
     let sk;
-    if (altitud <= altitudes[0]) sk = v[0];
-    else if (altitud >= altitudes[altitudes.length - 1]) sk = v[v.length - 1];
+    if (altitud <= puntos[0][0]) sk = puntos[0][1];
     else {
-      const i = altitudes.findIndex((a, j) => altitud >= a && altitud <= altitudes[j + 1]);
-      const t = (altitud - altitudes[i]) / (altitudes[i + 1] - altitudes[i]);
-      sk = v[i] + t * (v[i + 1] - v[i]);
+      const i = puntos.findIndex(([a], j) => altitud >= a && altitud <= puntos[j + 1][0]);
+      const [a0, s0] = puntos[i], [a1, s1] = puntos[i + 1];
+      sk = s0 + (altitud - a0) / (a1 - a0) * (s1 - s0);
     }
-    return { zona, altitud, sk, kgm2: sk * KN_A_KG };
+    return { origen: 'tabla', zona, altitud, fuera: false, sk, kgm2: sk * KN_A_KG };
   }
 
-  function cargas(n, m, { categoria = 'II', altura = 10 } = {}) {
-    const z = n.viento.zonas[m.zona_eolica];
-    const ce = exposicion(n, categoria, altura);
-    return {
-      viento: { zona: m.zona_eolica, vb: z.vb, qb: z.qb, kmh: z.vb * MS_A_KMH, categoria, altura, ce, qe: ce === null ? null : z.qb * ce },
-      nieve: nieve(n, m.zona_invierno, m.altitud)
-    };
+  // Tabla 3.8: capital por nombre (sin tildes ni mayúsculas)
+  function capital(n, nombre) {
+    const c = (n.capitales.lista || []).find(x => normalizar(x.nombre) === normalizar(nombre));
+    return c ? { origen: 'capital', nombre: c.nombre, altitud: c.altitud, sk: c.sk, kgm2: c.sk * KN_A_KG, fuera: false } : null;
+  }
+
+  // Cargas a partir de lo elegido: zona eólica → viento; capital o zona invernal + altitud → nieve
+  function cargas(n, { zona_eolica, zona_invierno, altitud, capital: cap } = {}, { categoria = 'II', altura = 10 } = {}) {
+    let viento = null;
+    if (ZONAS_EOLICAS.includes(zona_eolica)) {
+      const z = n.viento.zonas[zona_eolica];
+      const ce = exposicion(n, categoria, altura);
+      viento = { zona: zona_eolica, vb: z.vb, qb: z.qb, kmh: z.vb * MS_A_KMH, categoria, altura, ce, qe: ce === null ? null : z.qb * ce };
+    }
+    let sn = null;
+    if (cap) sn = capital(n, cap);
+    else if (zona_invierno !== '' && zona_invierno !== null && zona_invierno !== undefined && altitud !== '' && altitud !== null && altitud !== undefined) {
+      sn = nieve(n, Number(zona_invierno), Number(altitud));
+    }
+    return { viento, nieve: sn };
   }
 
   // Junta normativa y municipios en el objeto que carga la app (datos/municipios.js)
@@ -154,7 +185,7 @@
     return filas.map(([ine, catastro, provincia, nombre, altitud, zona_eolica, zona_invierno]) => ({ ine, catastro, provincia, nombre, altitud, zona_eolica, zona_invierno }));
   }
 
-  const API = { COLUMNAS, KN_A_KG, MS_A_KMH, leerCSV, validarNormativa, nieveCompleta, indice, municipioDeRefcat, exposicion, nieve, cargas, empaquetar, desempaquetar, normalizar };
+  const API = { COLUMNAS, ZONAS_EOLICAS, ZONAS_INVIERNO, CATEGORIAS, KN_A_KG, MS_A_KMH, leerCSV, validarNormativa, indice, municipioDeRefcat, exposicion, nieve, capital, cargas, empaquetar, desempaquetar, normalizar };
   raiz.SITIO = API;
   if (typeof module !== 'undefined') module.exports = API;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

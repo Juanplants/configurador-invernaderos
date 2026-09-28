@@ -21,4 +21,4 @@ const datos = SITIO.empaquetar(normativa, csv, meta);
 fs.writeFileSync(salida, '// Generado por herramientas/municipios_a_js.js: no editar a mano.\n'
   + `// Normativa: ${normativa.fuente}\n// Estado: ${normativa.estado}\n`
   + `window.SITIO_DATOS = ${JSON.stringify(datos)};\n`);
-console.log(`${path.relative(raiz, salida)}: ${csv.municipios.length} municipios; nieve ${SITIO.nieveCompleta(normativa) ? 'completa' : 'PENDIENTE (tabla E.2 vacía)'}`);
+console.log(`${path.relative(raiz, salida)}: ${csv.municipios.length} municipios; nieve ${'tabla E.2 y ' + normativa.capitales.lista.length + ' capitales'}`);
