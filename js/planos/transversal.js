@@ -199,7 +199,7 @@
         nota = 'Sin ventana cenital: la ventilación depende de los laterales.';
       } else {
         t = ventana.lineas >= 2 ? 'Ventana cenital mariposa' : 'Ventana cenital de una hoja';
-        nota = `Hoja de ${H.fmtCota(ventana.hoja)} m; apertura ≈ ${grados(alfa)}° (rendija ${H.fmtCota(Math.min(ventana.rendija || ventana.hoja, ventana.hoja))} m).`;
+        nota = `Hoja de ${H.fmtCota(ventana.hoja)} m; apertura aprox. ${grados(alfa)}° (rendija ${H.fmtCota(Math.min(ventana.rendija || ventana.hoja, ventana.hoja))} m).`;
       }
       const [px, py] = puntoRotulo;
       partes.push(H.rotulo(reg, { px, py, texto: t, largo: xR - px + 6, arriba: huella.y, limite: DIBUJO, nombre: 'ventana cenital' }));

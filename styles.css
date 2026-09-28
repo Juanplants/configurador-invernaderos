@@ -609,3 +609,7 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
   header { grid-template-columns: 1fr; }
   header .catalogo-activo { grid-column: 1; grid-row: auto; margin-top: 8px; flex-wrap: wrap; }
 }
+
+/* Descarga de planos */
+.plan-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 2px 2px; }
+.plan-acciones .hint { margin: 0; }

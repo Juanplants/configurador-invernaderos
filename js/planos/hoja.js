@@ -26,6 +26,15 @@
   };
   const FUENTE = "'Liberation Sans', Arial, Helvetica, sans-serif";
 
+  // ---------- Juego de caracteres ----------
+  // Las fuentes estándar del PDF (Helvetica) solo tienen WinAnsi (cp1252): un
+  // carácter fuera de él hace que el PDF salga ilegible. Todos los textos de la
+  // hoja se pasan por aquí antes de medirlos y dibujarlos.
+  const EXTRA_CP1252 = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+  const SUSTITUTOS = { '≈': 'aprox.', '−': '-', '‐': '-', '‑': '-', '≤': '<=', '≥': '>=', '⁰': '0', '³': '3' };
+  const enWinAnsi = (c) => { const k = c.codePointAt(0); return (k >= 0x20 && k <= 0x7e) || (k >= 0xa0 && k <= 0xff) || EXTRA_CP1252.includes(c); };
+  const aWinAnsi = (t) => [...String(t ?? '').normalize('NFC')].map(c => (enWinAnsi(c) ? c : (SUSTITUTOS[c] ?? '?'))).join('');
+
   // ---------- Medida de textos ----------
   // Anchos por carácter en em, holgados: valen para Arial/Liberation y
   // también para DejaVu si el sistema no tiene las primeras.
@@ -91,6 +100,7 @@
   const rect = (c, grosor, extra = '') =>
     `<rect x="${n(c.x)}" y="${n(c.y)}" width="${n(c.w)}" height="${n(c.h)}" fill="none" stroke="#000" stroke-width="${grosor}" ${extra}/>`;
   function texto(x, y, t, tam, { ancla = 'middle', rot = 0, peso = 400, indice = null } = {}) {
+    t = aWinAnsi(t);
     const tr = rot ? ` transform="rotate(${rot} ${n(x)} ${n(y)})"` : '';
     const id = indice !== null ? ` data-caja="${indice}"` : '';
     return `<text x="${n(x)}" y="${n(y)}" font-size="${tam}" font-family="${FUENTE}" font-weight="${peso}" text-anchor="${ancla}"${tr}${id}>${esc(t)}</text>`;
@@ -98,6 +108,7 @@
 
   // Coloca un texto en la primera posición libre; devuelve el SVG o '' si no cabe
   function textoRegistrado(reg, posiciones, t, tam, opciones) {
+    t = aWinAnsi(t);
     const cands = posiciones.map(p => ({ p, caja: cajaTexto(p.x, p.y, t, tam, p.ancla || 'middle', p.rot || 0) }));
     const r = reg.colocar(cands, Object.assign({ nombre: t }, opciones));
     if (!r) return '';
@@ -106,7 +117,7 @@
 
   // Recorta con «…» hasta que quepa en el ancho dado
   function ajustar(t, tam, ancho) {
-    t = String(t ?? '');
+    t = aWinAnsi(t);
     if (anchoTexto(t, tam) <= ancho) return t;
     while (t.length > 1 && anchoTexto(t + '…', tam) > ancho) t = t.slice(0, -1);
     return t.trimEnd() + '…';
@@ -402,7 +413,7 @@
   const API = {
     A3, MARCO, CAJETIN, LEYENDA, DIBUJO, ESCALAS, LINEA, FUENTE, ASC, DESC,
     anchoTexto, cajaTexto, solapan, dentro, Registro,
-    NOTA_CAJETIN, esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, mejorEscala, ocupacion, puertasEnHastiales,
+    NOTA_CAJETIN, aWinAnsi, enWinAnsi, esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, mejorEscala, ocupacion, puertasEnHastiales,
     cadena, burbujas, escalaGrafica, cajetin, fondo, hojaBase, rotulo, puntosArco, puntoDesdeCumbrera
   };
   raiz.HOJA = API;

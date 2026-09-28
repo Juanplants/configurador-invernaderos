@@ -26,6 +26,7 @@ const state = {
   opcionales: new Set(),
   zona: (CATALOGO.obra_local || [])[0]?.zona || '',
   viento_kmh: '',
+  parcela: { largo: '', ancho: '', orientacion: 0, girado: false },
   cliente: '',
   ubicacion: '',
   codigoProyecto: '',
@@ -296,6 +297,16 @@ function renderEnvolvente(modelo) {
     : '<p class="hint">El catálogo no tiene opciones para este modelo.</p>';
 }
 
+// Aviso si el invernadero no cabe en la parcela introducida
+function avisoParcela(r) {
+  const parcela = parcelaDelProyecto();
+  if (!parcela) return '';
+  const e = PLANOS_A3.encaje(r.geometria, parcela);
+  if (e.cabe) return '';
+  const falta = [e.faltaLargo > 0 ? `${fmtNum(e.faltaLargo, 2)} m a lo largo` : '', e.faltaAncho > 0 ? `${fmtNum(e.faltaAncho, 2)} m a lo ancho` : ''].filter(Boolean).join(' y ');
+  return `<div class="aviso rojo">El invernadero no cabe en la parcela: faltan ${falta}${parcela.girado ? '' : ' (prueba a girarlo 90°)'}.</div>`;
+}
+
 function renderSummary({ modelo, r }) {
   const g = r.geometria, p = r.precio, v = r.ventilacion, e = r.emplazamiento;
   const cell = (label, value) => `<div class="cell"><div class="label">${label}</div><div class="value">${value}</div></div>`;
@@ -317,7 +328,7 @@ function renderSummary({ modelo, r }) {
     </div>
 
     <div class="avisos">
-      ${r.avisos.map(a => `<div class="aviso ${a.nivel}">${esc(a.texto)}</div>`).join('')}
+      ${avisoParcela(r)}${r.avisos.map(a => `<div class="aviso ${a.nivel}">${esc(a.texto)}</div>`).join('')}
     </div>
 
     <table>
@@ -397,7 +408,16 @@ function renderMateriales({ r }) {
 
 // Planos: cuatro hojas A3 a escala (js/planos/). La ventana que dibujan sale
 // del resultado del motor, así coincide con la lista de materiales.
-const PLANOS_VISTAS = { planta: 'planta', 'alzado-frontal': 'alzadoFrontal', 'alzado-lateral': 'alzadoLateral', seccion: 'seccion' };
+const PLANOS_VISTAS = { planta: 'planta', 'alzado-frontal': 'alzadoFrontal', 'alzado-lateral': 'alzadoLateral', seccion: 'seccion', emplazamiento: 'emplazamiento' };
+const PLANOS_ARCHIVO = { planta: '01-planta', alzadoFrontal: '02-alzado-frontal', alzadoLateral: '03-alzado-lateral', seccion: '04-seccion', emplazamiento: '05-emplazamiento' };
+
+// Parcela introducida a mano: solo cuenta con largo y ancho positivos
+function parcelaDelProyecto() {
+  const p = state.parcela;
+  const largo = parseFloat(p.largo), ancho = parseFloat(p.ancho);
+  if (!(largo > 0) || !(ancho > 0)) return null;
+  return { largo, ancho, orientacion: parseFloat(p.orientacion) || 0, girado: !!p.girado };
+}
 
 function ventanasDelProyecto(r) {
   const g = r.geometria, v = r.ventilacion;
@@ -413,20 +433,32 @@ function ventanasDelProyecto(r) {
   };
 }
 
+// Devuelve la hoja, o null si es el emplazamiento y no hay parcela
 function plano(r, clave) {
+  const parcela = parcelaDelProyecto();
+  if (clave === 'emplazamiento' && !parcela) return null;
   return PLANOS_A3[clave](Object.assign({
     g: r.geometria, modelo: getModelo(), empresa: CATALOGO.empresa || {},
     proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
-    fecha: new Date().toLocaleDateString('es-ES')
+    fecha: new Date().toLocaleDateString('es-ES'),
+    parcela,
+    // Con parcela se conoce el norte: la planta lo dibuja
+    orientacion: parcela ? PLANOS_A3.encaje(r.geometria, parcela).azimutInvernadero : undefined
   }, ventanasDelProyecto(r)));
 }
 
+// Hojas en orden (01…05); el emplazamiento solo si hay parcela
 function generarPlanos(r) {
-  return Object.fromEntries(Object.values(PLANOS_VISTAS).map(k => [k, plano(r, k)]));
+  return Object.fromEntries(Object.values(PLANOS_VISTAS).map(k => [k, plano(r, k)]).filter(([, h]) => h));
 }
 
+const HOJA_SIN_PARCELA = {
+  viewBox: '0 0 420 297',
+  svg: '<rect width="420" height="297" fill="#fafafa"/><text x="210" y="148" text-anchor="middle" font-size="7" fill="#666" font-family="sans-serif">Introduce el largo y el ancho de la parcela en «Emplazamiento»</text>'
+};
+
 function renderPlano({ r }) {
-  const p = plano(r, PLANOS_VISTAS[state.vistaActual]);
+  const p = plano(r, PLANOS_VISTAS[state.vistaActual]) || HOJA_SIN_PARCELA;
   const svg = document.getElementById('plan');
   svg.setAttribute('viewBox', p.viewBox);
   svg.innerHTML = p.svg;
@@ -434,6 +466,28 @@ function renderPlano({ r }) {
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.vista === state.vistaActual);
   });
+}
+
+// ------- Planos en PDF -------
+async function descargarPlanos(soloEsta) {
+  const estado = document.getElementById('pdf-estado');
+  const { r, error } = calcularTodo();
+  if (error) return;
+  const planos = generarPlanos(r);
+  const clave = PLANOS_VISTAS[state.vistaActual];
+  if (soloEsta && !planos[clave]) { estado.textContent = 'Esta hoja necesita las medidas de la parcela.'; return; }
+  const claves = soloEsta ? [clave] : Object.keys(planos);
+  const nombre = EXPORTAR.nombreArchivo(state.codigoProyecto, soloEsta ? PLANOS_ARCHIVO[clave] : 'planos');
+  estado.textContent = 'Generando PDF…';
+  try {
+    await EXPORTAR.descargar(claves.map(k => planos[k]), nombre, {
+      titulo: `Planos ${state.codigoProyecto || ''} ${state.cliente || ''}`.trim(),
+      autor: (CATALOGO.empresa || {}).nombre || ''
+    });
+    estado.textContent = `${nombre}: ${claves.length} hoja${claves.length > 1 ? 's' : ''} A3. Imprimir al 100 % (tamaño real).`;
+  } catch (e) {
+    estado.textContent = `No se pudo generar el PDF: ${e.message}`;
+  }
 }
 
 // ------- Propuesta PDF -------
@@ -466,6 +520,12 @@ function bindEvents() {
   on('altura-canal', 'change', el => { state.altura_canal = +el.value; });
   on('zona', 'change', el => { state.zona = el.value; });
   on('viento', 'input', el => { state.viento_kmh = el.value === '' ? '' : Math.max(0, +el.value || 0); });
+  on('parcela-largo', 'input', el => { state.parcela.largo = el.value; });
+  on('parcela-ancho', 'input', el => { state.parcela.ancho = el.value; });
+  on('parcela-orientacion', 'input', el => { state.parcela.orientacion = el.value; });
+  on('parcela-girado', 'change', el => { state.parcela.girado = el.checked; });
+  document.getElementById('btn-pdf-todos').addEventListener('click', () => descargarPlanos(false));
+  document.getElementById('btn-pdf-hoja').addEventListener('click', () => descargarPlanos(true));
   on('opciones', 'change', el => {
     if (el.dataset.opcional) {
       if (el.checked) state.opcionales.add(el.dataset.opcional);

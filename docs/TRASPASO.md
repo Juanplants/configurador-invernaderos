@@ -14,9 +14,10 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | --- | --- |
 | `index.html`, `styles.css`, `js/app.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
 | `js/planos/hoja.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas, rótulos, leyenda y cajetín comunes, perfil del arco |
-| `js/planos/planta.js`, `transversal.js`, `lateral.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal |
+| `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento |
+| `js/exportar.js` | Exportación de las hojas a **PDF vectorial A3** (escala real al imprimir en A3 al 100 %) |
 | `js/importador.js` | **Importador y validador del catálogo** (fase 1): lee la plantilla `.xlsx` en el navegador |
-| `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5 (ver `lib/LEEME.md`) |
+| `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5, jsPDF 4.2.1, svg2pdf.js 2.8.1 (versiones, origen y licencias en `lib/LEEME.md`) |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
 | `motor.html` | Página de prueba del motor con el catálogo de ejemplo (doble clic) |
 | `datos/Catalogo_Plantilla_v0.4.xlsx` | Plantilla del catálogo, rellena con un **ejemplo de valores estimados** |
@@ -24,11 +25,12 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `herramientas/catalogo_a_json.py` | Convierte la plantilla Excel en JSON/JS (misma conversión que `js/importador.js`) |
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
-| `tests/importacion.js` | Pruebas del importador (32): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
-| `tests/planos.js` | Pruebas de las cuatro hojas (184 comprobaciones, 176 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital |
-| `tests/hojas_de_prueba.js` | Casos comunes a las dos pruebas de planos (168 hojas) |
+| `tests/importacion.js` | Pruebas del importador (36): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
+| `tests/planos.js` | Pruebas de las cinco hojas (217 comprobaciones, 208 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte |
+| `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (208 hojas) |
+| `tests/pdf_navegador.js` | Exportación en Chromium sin conexión: nombres, páginas A3, escala real medida en el PDF, títulos, sin peticiones externas (se omite sin Playwright) |
 | `tests/planos_navegador.js` | En Chromium, cada texto real cabe en su caja estimada (se omite sin Playwright) |
-| `tests/generar_catalogo_con_errores.py` → `tests/datos/Catalogo_con_errores.xlsx` | Plantilla con 6 errores y 3 avisos provocados a propósito |
+| `tests/generar_catalogo_con_errores.py` → `tests/datos/Catalogo_con_errores.xlsx` | Plantilla con 7 errores y 3 avisos provocados a propósito |
 | `docs/` | Especificación, este traspaso, README de la v0.3 |
 
 ## Cómo comprobar que todo funciona
@@ -40,6 +42,7 @@ node tests/pruebas.js        # debe terminar con "0 fallos"
 node tests/importacion.js    # ídem (si se cambia la plantilla: python3 tests/generar_catalogo_con_errores.py)
 node tests/planos.js
 node tests/planos_navegador.js   # opcional, necesita Playwright
+node tests/pdf_navegador.js      # opcional, necesita Playwright
 ```
 
 Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
@@ -78,19 +81,23 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Ejes:** pórticos numerados (1, 2, 3…), líneas de pilares con letras (A, B, C…). Si las burbujas no caben todas, se rotula uno de cada 2, 5 o 10, siempre el primero y el último.
 - **Cotas:** fuera del dibujo; cadena de vanos por dentro y total por fuera. Si el texto de cada vano no cabe entre sus líneas, se agrupan los vanos iguales (`60 × 4,00`).
 - **Registro de cajas** (`HOJA.Registro`): cada texto, burbuja, línea de cota y el contorno del dibujo apuntan su caja; un texto se coloca en la primera posición candidata que no pisa nada. Si un texto obligatorio no cabe, queda en `fallos`. El ancho de los textos se estima con una tabla por carácter holgada; `tests/planos_navegador.js` comprueba en Chromium que el texto real cabe.
-- **Hojas hechas:** 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal.
+- **Hojas hechas:** 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento (si hay parcela).
+- **Emplazamiento (05):** parcela rectangular introducida a mano (largo, ancho y ángulo de su lado largo respecto al norte), dibujada con el lado más largo en horizontal y la flecha del norte girada. Invernadero centrado, paralelo o girado 90°, con las distancias a los cuatro linderos acotadas; si no cabe, se dibuja igual con el aviso «El invernadero no cabe en la parcela» y lo que falta (también en el resumen de la app). Con parcela, la planta dibuja el norte. La parcela real del catastro queda para la fase 6.
+- **Textos:** todos pasan por `HOJA.aWinAnsi` (juego de la Helvetica del PDF); un carácter fuera de él se sustituye (≈ → «aprox.») o sale como «?».
 - **Sección y alzado frontal:** arco dibujado como la parábola de luz = ancho de nave y flecha del catálogo (la misma forma con la que el motor calcula longitud de arco y volumen). Alturas a canal, flecha y cumbrera acotadas. Si el invernadero entero cabe a 1:300 o mayor, se dibuja completo; si no, se interrumpe a la mayor escala en la que quepan al menos 2 naves, con tantas como llenen el ancho (p. ej. 15 naves de 9,60 m: 3 naves a 1:100). La cota de la interrupción dice cuántas naves faltan y la total es la real.
 - **Puertas:** medidas de la hoja Equipos («Ancho puerta», «Alto puerta»); cantidad de la partida de puertas. Una por nave en el hastial frontal y el resto en el trasero, en el hueco entre pilares de hastial más centrado de la nave. Se dibujan en planta (hoja corredera por fuera del hastial) y en el alzado frontal.
 - **Ventana cenital en la sección:** según la opción elegida (1 línea = una hoja, 2 = mariposa, ninguna = techo cerrado), con bisagra en la cumbrera, hoja cerrada sobre el arco y abierta a 2·arcsen(rendija / 2·hoja). Los datos salen del resultado del motor (`r.ventilacion`), así coinciden con la lista de materiales. Rótulo obligatorio con línea de referencia.
 - **Alzado lateral:** ventana cenital del 2.º al penúltimo pórtico (`long_ventana_cenital`) y ventana lateral si la hay (posición orientativa). Sus rótulos son opcionales: con 60 tramos a 1:1000 las burbujas no dejan paso; el dato va siempre en las notas.
-- Pendiente: emplazamiento con el norte, detalles, cimentación; exportar PDF por hoja. El norte no se dibuja hasta tener la orientación de la parcela.
+- **PDF** (`js/exportar.js`): «Descargar planos (PDF A3)» genera un PDF con todas las hojas y «Esta hoja (PDF)» la pestaña actual; nombre `<código>_planos_<AAAA-MM-DD>.pdf` o `<código>_<nº>-<hoja>_<AAAA-MM-DD>.pdf`. Cada hoja es una página A3 apaisada con el SVG en mm 1:1 (vectorial, Helvetica); impresa en A3 «al 100 % / tamaño real» la escala del cajetín es exacta; el PDF pide al visor no reescalar.
+- **En espera de datos del fabricante:** detalles constructivos y cimentación (no empezar hasta tenerlos).
+- **Estética (pendiente, no implementado):** en los alzados sobra espacio vertical por la forma alargada del invernadero. Cuando se retoquen los planos, valorar juntar alzado frontal y sección transversal en una misma hoja A3.
 
 ## Siguientes pasos (en orden)
 
 1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 cuando se pueda descargar de `cdn.sheetjs.com` (instrucciones en `lib/LEEME.md`).
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
-4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados y sección hechos (ver «Planos»); siguen detalles, cimentación, emplazamiento y exportación por hoja.
+4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
 
 ## Reglas de trabajo
 

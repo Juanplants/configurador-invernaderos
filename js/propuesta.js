@@ -172,6 +172,7 @@ const PROPUESTA = {
       ${pagina('Alzado frontal', planos.alzadoFrontal)}
       ${pagina('Alzado lateral', planos.alzadoLateral)}
       ${pagina('Sección transversal', planos.seccion)}
+      ${planos.emplazamiento ? pagina('Emplazamiento', planos.emplazamiento) : ''}
     `;
   },
 
