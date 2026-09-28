@@ -150,7 +150,40 @@ function lateral(h, caso, errores) {
   for (const t of [fmt(g.largo), fmt(g.altura_canal), fmt(g.altura_cumbrera)]) if (!c.some(x => x.endsWith(` ${t}`))) errores.push(`falta la cota ${t}`);
 }
 
-const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion };
+// ---------- Emplazamiento ----------
+function emplazamiento(h, caso, errores) {
+  const { g, parcela } = caso;
+  const E = h.escala, mayor = mayorQue(E), e = h.encaje;
+  if (mayor && !noVale(HOJAS.EMPLAZAMIENTO.dibujarEmplazamiento(HOJAS.datos(caso), mayor))) errores.push(`cabría a 1:${mayor}`);
+  // Encaje independiente: invernadero centrado, lado más largo de la parcela en horizontal
+  const Lg = parcela.girado ? g.ancho_total : g.largo, Ag = parcela.girado ? g.largo : g.ancho_total;
+  const debeCaber = Lg <= parcela.largo + 1e-9 && Ag <= parcela.ancho + 1e-9;
+  if (e.cabe !== debeCaber) errores.push(`cabe = ${e.cabe}, debería ser ${debeCaber}`);
+  if (e.PX < e.PY) errores.push('el lado largo de la parcela no está en horizontal');
+  const c = cotas(h);
+  const tiene = (nombre, v) => c.some(t => t.includes(nombre) && t.endsWith(` ${fmt(v)}`));
+  if (!tiene('parcela total', e.PX) || !tiene('parcela total', e.PY)) errores.push('faltan las cotas totales de la parcela');
+  const aviso = h.svg.includes('>EL INVERNADERO NO CABE EN LA PARCELA<');
+  if (debeCaber) {
+    if (aviso) errores.push('avisa de que no cabe, pero cabe');
+    // Distancias a los linderos: (P − G) / 2 a cada lado, y suman con el invernadero la parcela
+    const dx = (e.PX - e.GX) / 2, dy = (e.PY - e.GY) / 2;
+    for (const [d, G] of [[dx, e.GX], [dy, e.GY]]) {
+      if (d > 0.005 && !tiene('lindero', d)) errores.push(`falta la distancia al lindero ${fmt(d)}`);
+      if (!tiene('lindero', G) && !(d <= 0.005 && tiene('parcela total', G))) errores.push(`falta la cota del invernadero ${fmt(G)}`);
+    }
+    if (Math.abs(2 * dx + e.GX - e.PX) > 1e-9 || Math.abs(2 * dy + e.GY - e.PY) > 1e-9) errores.push('las distancias no suman la parcela');
+  } else {
+    if (!aviso) errores.push('falta el aviso de que no cabe');
+    if (c.some(t => t.includes('lindero'))) errores.push('acota distancias a los linderos aunque no cabe');
+  }
+  // Norte: 90° − azimut del eje x del papel
+  const azX = parcela.largo >= parcela.ancho ? parcela.orientacion : parcela.orientacion - 90;
+  const norte = ((90 - azX) % 360 + 360) % 360;
+  if (!h.svg.includes(`rotate(${norte})`)) errores.push(`el norte no está a ${norte}°`);
+}
+
+const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion, emplazamiento };
 
 for (const caso of HOJAS.casos()) {
   const h = HOJAS.generar(caso);

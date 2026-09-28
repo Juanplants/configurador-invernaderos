@@ -1,6 +1,6 @@
 // Casos comunes de tests/planos.js y tests/planos_navegador.js:
 // 1/2/5/10 naves × 10/20/60 tramos × los dos modelos del catálogo de ejemplo,
-// en las cuatro hojas (con una puerta de 3 × 3 m). Sección con techo cerrado,
+// en las cinco hojas (con una puerta de 3 × 3 m). Sección con techo cerrado,
 // una hoja y mariposa; alzado lateral con y sin ventana lateral. Además, casos
 // que fuerzan la interrupción (15 naves) y puertas en los dos hastiales.
 
@@ -8,12 +8,13 @@ const HOJA = require('../js/planos/hoja.js');
 const PLANTA = require('../js/planos/planta.js');
 const TRANSVERSAL = require('../js/planos/transversal.js');
 const LATERAL = require('../js/planos/lateral.js');
+const EMPLAZAMIENTO = require('../js/planos/emplazamiento.js');
 const GEO = require('../js/motor/geometria.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
 
 // Textos largos a propósito para forzar recortes en el cajetín
 const PROYECTO = { cliente: 'Explotación Agrícola Hermanos Martínez Fernández', codigo: '26JD001', ubicacion: 'Paraje Los Llanos, El Ejido (Almería)' };
-const FUNCION = { planta: PLANTA.planta, alzadoFrontal: TRANSVERSAL.alzadoFrontal, alzadoLateral: LATERAL.alzadoLateral, seccion: TRANSVERSAL.seccion };
+const FUNCION = { planta: PLANTA.planta, alzadoFrontal: TRANSVERSAL.alzadoFrontal, alzadoLateral: LATERAL.alzadoLateral, seccion: TRANSVERSAL.seccion, emplazamiento: EMPLAZAMIENTO.emplazamiento };
 const VENTANA = (lineas, g) => (lineas ? { lineas, hoja: g.ancho_hoja, rendija: Math.min(1, g.ancho_hoja) } : null);
 
 function casos() {
@@ -30,6 +31,9 @@ function casos() {
           lista.push(Object.assign({ vista: 'alzadoLateral', nombre: nombre('alzado lateral', alto ? ', con ventana lateral' : ''),
             ventana: VENTANA(2, g), lateral: alto ? { alto } : null }, base));
         }
+        // Emplazamiento: parcela con 12 m de margen a lo largo y 8 m a lo ancho, a 30° del norte
+        lista.push(Object.assign({ vista: 'emplazamiento', nombre: nombre('emplazamiento'),
+          parcela: { largo: g.largo + 24, ancho: g.ancho_total + 16, orientacion: 30 } }, base));
         for (const lineas of [0, 1, 2]) {
           lista.push(Object.assign({ vista: 'seccion', nombre: nombre('sección', [', techo cerrado', ', una hoja', ', mariposa'][lineas]),
             ventana: VENTANA(lineas, g) }, base));
@@ -46,6 +50,16 @@ function casos() {
     lista.push({ vista: 'planta', nombre: `planta ${modelo.id} 2 naves con 3 puertas`, modelo, naves: 2, tramos: 20, g: g2, puertas: PUERTAS(3) });
     lista.push({ vista: 'alzadoFrontal', nombre: `alzado frontal ${modelo.id} 2 naves con 3 puertas`, modelo, naves: 2, tramos: 20, g: g2, puertas: PUERTAS(3) });
   }
+  // Emplazamiento fuera de la malla: girado, parcela más ancha que larga, pegado al lindero y sin sitio
+  for (const modelo of catalogo.modelos) {
+    const g = GEO.calcular(modelo, { naves: 5, tramos: 20 });
+    const b = { vista: 'emplazamiento', modelo, naves: 5, tramos: 20, g };
+    const n = (t) => `emplazamiento ${modelo.id} 5 naves × 20 tramos, ${t}`;
+    lista.push(Object.assign({ nombre: n('girado 90°'), parcela: { largo: g.ancho_total + 30, ancho: g.largo + 10, orientacion: 75, girado: true } }, b));
+    lista.push(Object.assign({ nombre: n('parcela más ancha que larga'), parcela: { largo: g.largo + 10, ancho: g.largo + 60, orientacion: 350 } }, b));
+    lista.push(Object.assign({ nombre: n('pegado al lindero'), parcela: { largo: g.largo, ancho: g.ancho_total + 20, orientacion: 0 } }, b));
+    lista.push(Object.assign({ nombre: n('no cabe'), parcela: { largo: g.largo - 12, ancho: g.ancho_total + 6, orientacion: 120 } }, b));
+  }
   return lista;
 }
 
@@ -56,9 +70,10 @@ const PUERTAS = (cantidad) => ({ cantidad, ancho: PUERTA.ancho_puerta, alto: PUE
 function datos(caso) {
   return {
     g: caso.g, modelo: caso.modelo, empresa: catalogo.empresa, proyecto: PROYECTO, fecha: '28/09/2026',
-    ventana: caso.ventana, lateral: caso.lateral, puertas: caso.puertas === undefined ? PUERTAS(1) : caso.puertas
+    ventana: caso.ventana, lateral: caso.lateral, puertas: caso.puertas === undefined ? PUERTAS(1) : caso.puertas,
+    parcela: caso.parcela
   };
 }
 const generar = (caso) => FUNCION[caso.vista](datos(caso));
 
-module.exports = { casos, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, GEO, catalogo };
+module.exports = { casos, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, EMPLAZAMIENTO, GEO, catalogo };
