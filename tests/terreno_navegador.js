@@ -16,6 +16,7 @@ const zlib = require('zlib');
 const PAR = require('../js/terreno/parcela.js');
 const OPT = require('../js/terreno/optimizador.js');
 const CROQUIS = require('../js/terreno/croquis.js');
+const { irA } = require('./navegador_pasos.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
 
 let chromium;
@@ -58,6 +59,7 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   };
   const plano = () => p.locator('#plan').innerHTML();
   const buscar = async () => {
+    await irA(p, 'geometria');
     await p.evaluate(() => { document.getElementById('optimizador').innerHTML = ''; });
     await p.click('#btn-optimizar');
     await p.waitForSelector('.candidata', { timeout: 30000 });
@@ -65,10 +67,11 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
 
   // ---------- 1. Cargar la parcela ----------
   console.log('1. Cargar la parcela del Catastro');
+  await irA(p, 'emplazamiento');
   await p.setInputFiles('#archivo-parcela', { name: 'nota.gml', mimeType: 'text/xml', buffer: Buffer.from('<FeatureCollection></FeatureCollection>') });
   await p.waitForSelector('#parcela-info .aviso.rojo');
   comprobar('archivo sin polígono: aviso en rojo', (await p.locator('#parcela-info').innerText()).includes('ningún polígono'));
-  await p.fill('#puertas', '1'); // otro render: el aviso sigue
+  await p.fill('#camino', '4'); // otro render: el aviso sigue
   comprobar('el aviso se mantiene al seguir editando', await p.locator('#parcela-info .aviso.rojo').count() === 1);
 
   await p.setInputFiles('#archivo-parcela', path.join(DATOS, 'parcela_irregular.kml'));
@@ -115,9 +118,9 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   comprobar('rellena la ventana cenital', await p.inputValue('[data-grupo="ventilacion_cenital"]') === c.ventana.id, await p.inputValue('[data-grupo="ventilacion_cenital"]'));
   comprobar('rellena ancho de nave y separación', Math.abs(+(await p.inputValue('#ancho-nave')) - c.ancho_nave) < 1e-9 && Math.abs(+(await p.inputValue('#separacion')) - c.separacion) < 1e-9);
   comprobar('tarjeta marcada como elegida', (await p.locator('.candidata.elegida').count()) === 1 && (await p.locator('.candidata.elegida').innerText()).includes('Elegida'));
-  const resumen = await p.locator('.summary-grid').innerText();
+  const resumen = await p.locator('.summary-grid').textContent();
   comprobar('el resumen tiene la superficie elegida', resumen.includes(`${Math.round(c.area).toLocaleString('es-ES')} m²`), resumen);
-  comprobar('sin aviso de que no cabe', !(await p.locator('#summary .avisos').innerText()).includes('no cabe'));
+  comprobar('sin aviso de que no cabe', !(await p.locator('#summary .avisos').textContent()).includes('no cabe'));
   const elegido = await plano();
   const dist = elegido.match(/Distancia mínima al lindero ([\d.,]+) m \(exigida 4,00 m\)/);
   comprobar('plano: distancia mínima exigida cumplida', dist && numero(dist[1]) >= 4, dist && dist[0]);
@@ -135,17 +138,20 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   await p.click('.tab[data-vista="emplazamiento"]');
   // Cambiar a mano las naves: se vuelve a encajar o se avisa
   await p.fill('#num-naves', '40');
-  comprobar('más naves de las que caben: aviso', (await p.locator('#summary .avisos').innerText()).includes('no cabe en la parcela del Catastro'));
+  comprobar('más naves de las que caben: aviso', (await p.locator('#summary .avisos').textContent()).includes('no cabe en la parcela del Catastro'));
   comprobar('y el plano lo dice', (await plano()).includes('EL INVERNADERO NO CABE EN LA PARCELA'));
   comprobar('la tarjeta ya no está elegida', await p.locator('.candidata.elegida').count() === 0);
   await p.click('[data-elegir="1"]');
+  await irA(p, 'salidas');
   const pdf = fs.readFileSync(await bajar('#btn-pdf-todos')).toString('latin1');
   const paginas = [...pdf.matchAll(/\/Type \/Page\b[\s\S]*?\/Contents (\d+) 0 R/g)].map(m => +m[1]);
   const contenido = (n) => { const m = pdf.match(new RegExp(`(?:^|\\n)${n} 0 obj[\\s\\S]*?stream\\r?\\n([\\s\\S]*?)endstream`)); try { return zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch (_) { return m ? m[1] : ''; } };
   comprobar('PDF de planos: 5 hojas, la última el emplazamiento', paginas.length === 5 && contenido(paginas[4]).includes('(EMPLAZAMIENTO) Tj') && contenido(paginas[4]).includes('Parcela del Catastro'), `${paginas.length}`);
 
   // Orientación preferida este-oeste: vuelve a buscar y las cumbreras van a 90°
+  await irA(p, 'emplazamiento');
   await p.selectOption('#orientacion-preferida', 'este_oeste');
+  await irA(p, 'geometria');
   await p.waitForFunction(() => document.querySelector('#optimizador h3') && document.querySelector('#optimizador h3').innerText.includes('este-oeste'), null, { timeout: 30000 });
   const eo = OPT.buscar({ anillos: gml.anillos, catalogo, holgura: 4, perfil: 'clima', orientacion: 'este_oeste', base: { seleccion: {}, opcionales: [], puertas: 1, zona: 'Almería' } });
   const textosEo = await p.locator('.candidata').allInnerTexts();
@@ -156,8 +162,10 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
 
   // ---------- 4. Guardar y abrir ----------
   console.log('4. Guardar y abrir el proyecto');
+  await irA(p, 'emplazamiento');
   await p.fill('#retranqueo', '5');
   const hojaGuardada = await plano();
+  await irA(p, 'salidas');
   const archivo = await bajar('#btn-guardar-proyecto');
   const json = JSON.parse(fs.readFileSync(archivo, 'utf8'));
   comprobar('el proyecto guarda la parcela, la implantación y los retranqueos', json.proyecto.terreno && json.proyecto.terreno.anillos[0].length === 8
@@ -167,13 +175,14 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   await p.setInputFiles('#archivo-proyecto', archivo);
   await p.waitForSelector('body.dialogo-abierto');
   await p.click('#btn-cerrar-dialogo');
-  comprobar('vuelve la parcela', (await p.locator('.parcela-cargada').innerText()).includes('00000X00000000'));
+  comprobar('vuelve la parcela', (await p.locator('.parcela-cargada').textContent()).includes('00000X00000000'));
   comprobar('vuelven retranqueo, perfil y orientación', await p.inputValue('#retranqueo') === '5' && await p.inputValue('#perfil') === 'clima' && await p.inputValue('#orientacion-preferida') === 'este_oeste');
   const norm = (s) => s.replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, '');
   comprobar('mismo plano de emplazamiento', norm(await plano()) === norm(hojaGuardada));
 
   // ---------- 5. Quitar la parcela ----------
   console.log('5. Parcela rectangular a mano');
+  await irA(p, 'emplazamiento');
   await p.click('#btn-quitar-parcela');
   comprobar('vuelve el rectángulo a mano', await p.isVisible('#parcela-largo'));
   comprobar('sin parcela, el emplazamiento pide una', (await plano()).includes('Carga la parcela del Catastro'));
@@ -182,8 +191,10 @@ const numero = (t) => parseFloat(String(t).replace(/\./g, '').replace(',', '.'))
   await buscar();
   comprobar('rectángulo: 3 tarjetas', await p.locator('.candidata').count() === 3);
   await p.click('[data-elegir="0"]');
-  comprobar('rectángulo: la elegida cabe', !(await p.locator('#summary .avisos').innerText()).includes('no cabe') && !(await plano()).includes('NO CABE'));
+  comprobar('rectángulo: la elegida cabe', !(await p.locator('#summary .avisos').textContent()).includes('no cabe') && !(await plano()).includes('NO CABE'));
+  await irA(p, 'emplazamiento');
   await p.fill('#parcela-largo', '');
+  await irA(p, 'geometria');
   await p.click('#btn-optimizar');
   comprobar('sin parcela: pide una', (await p.locator('#optimizador').innerText()).includes('Carga la parcela'));
 

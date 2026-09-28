@@ -19,7 +19,8 @@ header .subtitle { font-size: 12px; opacity: 0.85; margin-top: 2px; }
 
 .layout {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: minmax(400px, 5fr) 6fr;
+  align-items: start;
   gap: 16px;
   padding: 16px;
   max-width: 1500px;
@@ -545,7 +546,7 @@ body.modo-propuesta { overflow: hidden; }
     background: white;
     overflow: visible;
   }
-  .no-print, header, footer, main { display: none !important; }
+  .no-print, header, footer, main, .barra-pasos { display: none !important; }
   #propuesta-container {
     max-width: none;
     margin: 0;
@@ -657,3 +658,64 @@ body.dialogo-abierto #dialogo-catalogo { display: block; }
 .candidata .btn-elegir { margin-top: auto; padding: 8px; }
 .candidata.en-rojo { border-color: #e57373; }
 .candidata .aviso { margin: 0; }
+
+/* ============================================================
+   FLUJO DE 6 PASOS
+   ============================================================ */
+.barra-pasos {
+  display: flex; gap: 6px; max-width: 1500px; margin: 0 auto; padding: 14px 16px 0;
+  counter-reset: paso; flex-wrap: wrap;
+}
+.paso-boton {
+  flex: 1; min-width: 120px; display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border: 1px solid #cfd8dc; border-radius: 6px; background: white;
+  font-family: inherit; font-size: 12px; font-weight: 600; color: #555; cursor: pointer;
+}
+.paso-boton .num {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: #eceff1; color: #555; font-size: 11px; flex: none;
+}
+.paso-boton.visitado { border-color: #a5d6a7; color: #1b5e20; }
+.paso-boton.visitado .num { background: #c8e6c9; color: #1b5e20; }
+.paso-boton.actual { background: #2e7d32; border-color: #2e7d32; color: white; }
+.paso-boton.actual .num { background: white; color: #2e7d32; }
+.paso-boton:disabled { cursor: not-allowed; opacity: 0.55; }
+.paso-boton:not(:disabled):not(.actual):hover { background: #e8f5e9; }
+.marca-avisos:empty { display: none; }
+.marca-avisos { margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 9px; font-size: 10px; line-height: 18px; text-align: center; background: #ff9800; color: white; }
+.marca-avisos.rojo { background: #c62828; }
+
+.pasos-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.paso[hidden] { display: none; }
+.paso:not(.config-panel) { display: flex; flex-direction: column; gap: 12px; }
+.paso:not(.config-panel)[hidden] { display: none; }
+.config-panel .btn-secundario { width: auto; }
+#btn-abrir-proyecto { margin-top: 4px; }
+.resumen-corto { font-size: 12px; color: #444; background: white; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; }
+.resumen-corto .rojo { color: #c62828; font-weight: 600; }
+.resumen-corto .ambar { color: #b26a00; font-weight: 600; }
+.pasos-navegacion { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pasos-navegacion .hint { margin: 0; }
+.btn-siguiente {
+  padding: 10px 18px; background: #2e7d32; color: white; border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.btn-siguiente:hover { background: #1b5e20; }
+.pasos-navegacion .btn-secundario:disabled { opacity: 0.4; cursor: default; }
+.preview-panel { position: sticky; top: 12px; }
+.optimizador-box { margin-top: 12px; padding: 12px; }
+.candidatas { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.tabla-aptitud { width: 100%; font-size: 12px; border-collapse: collapse; margin: 4px 0 8px; }
+.tabla-aptitud td { padding: 3px 4px; border-bottom: 1px solid #f0f0f0; }
+.tabla-aptitud td:last-child { text-align: right; font-weight: 600; }
+.salidas-lista { display: flex; flex-direction: column; gap: 10px; }
+.salida { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+.salida .hint { margin: 2px 0 0; }
+.salida-botones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: 1fr; }
+  .preview-panel { position: static; }
+}
+.tabla-aptitud td.apto-apto { color: #2e7d32; }
+.tabla-aptitud td.apto-al_limite { color: #b26a00; }
+.tabla-aptitud td.apto-no_apto { color: #c62828; }

@@ -38,6 +38,7 @@ const state = {
   codigoProyecto: '',
   vistaActual: 'planta',
   verCalculo: false,
+  pasos: PASOS.inicial(),   // paso actual y visitados (no se guarda en el proyecto)
   optimizacion: null    // última búsqueda del optimizador (no se guarda)
 };
 
@@ -139,6 +140,7 @@ function aplicarEstadoProyecto(e) {
   poner('parcela-largo', state.parcela.largo); poner('parcela-ancho', state.parcela.ancho); poner('parcela-orientacion', state.parcela.orientacion);
   document.getElementById('parcela-girado').checked = !!state.parcela.girado;
   if (!PLANOS_VISTAS[state.vistaActual]) state.vistaActual = 'planta';
+  state.pasos = PASOS.todos(state.pasos); // un proyecto abierto está completo: se puede ir a cualquier paso
   render();
 }
 
@@ -250,10 +252,59 @@ function perfilesUsados(r) {
   return [...vistos.values()];
 }
 
+// ------- Pasos -------
+// Solo se ve el paso actual; la barra deja saltar a los ya visitados
+function renderPasos() {
+  const p = state.pasos;
+  document.querySelectorAll('.paso').forEach(sec => { sec.hidden = sec.dataset.paso !== p.actual; });
+  document.querySelectorAll('.paso-boton').forEach(b => {
+    const paso = b.dataset.ir;
+    b.classList.toggle('actual', paso === p.actual);
+    b.classList.toggle('visitado', PASOS.visitado(p, paso));
+    b.disabled = !PASOS.visitado(p, paso);
+    b.setAttribute('aria-current', paso === p.actual ? 'step' : 'false');
+  });
+  const i = PASOS.indice(p), n = PASOS.LISTA.length;
+  document.getElementById('btn-anterior').disabled = i === 0;
+  const sig = document.getElementById('btn-siguiente');
+  sig.hidden = i === n - 1;
+  if (i < n - 1) sig.textContent = `Siguiente: ${PASOS.NOMBRES[PASOS.LISTA[i + 1]]} →`;
+  document.getElementById('paso-actual').textContent = `Paso ${i + 1} de ${n}`;
+}
+
+// Resumen de una línea encima de cada paso: lo esencial sin ir a «Revisión»
+function renderResumenCorto({ modelo, r, error }) {
+  const caja = document.getElementById('resumen-corto');
+  const marca = document.getElementById('marca-avisos');
+  if (error) { caja.innerHTML = `<span class="rojo">${esc(error)}</span>`; marca.textContent = '!'; marca.className = 'marca-avisos rojo'; return; }
+  const g = r.geometria, p = r.precio;
+  const rojos = r.avisos.filter(a => a.nivel === 'rojo').length + (avisoParcela(r) ? 1 : 0);
+  const ambar = r.avisos.filter(a => a.nivel === 'ambar').length;
+  caja.innerHTML = `<strong>${esc(modelo.nombre)}</strong> · ${g.naves} × ${fmtNum(g.ancho_nave, 2)} m × ${fmtNum(g.largo)} m · ${fmtNum(g.area, 0)} m²`
+    + ` · <strong>${fmtNum(p.eur_m2, 2)} €/m²</strong> · ${fmtEuro(p.total)} IVA incl.`
+    + (rojos || ambar ? ` · <span class="${rojos ? 'rojo' : 'ambar'}">${rojos + ambar} aviso${rojos + ambar > 1 ? 's' : ''} (ver «Revisión»)</span>` : '');
+  marca.textContent = rojos + ambar ? String(rojos + ambar) : '';
+  marca.className = `marca-avisos ${rojos ? 'rojo' : ambar ? 'ambar' : ''}`;
+}
+
+// Emplazamiento: aptitud de cada modelo del catálogo para el viento del sitio
+function renderAptitud() {
+  const caja = document.getElementById('aptitud-modelos');
+  if (state.viento_kmh === '') { caja.innerHTML = '<p class="hint">Con el viento del sitio se comprueba cada modelo (apto / al límite / no apto) antes de diseñar.</p>'; return; }
+  const sitio = { viento_kmh: +state.viento_kmh };
+  const texto = { apto: 'Apto', al_limite: 'Al límite', no_apto: 'No apto — requiere cálculo' };
+  caja.innerHTML = `<table class="tabla-aptitud">${CATALOGO.modelos.map(m => {
+    const e = MOTOR.avisos.emplazamiento(m, sitio);
+    return `<tr><td>${esc(m.nombre)} <small>(${m.viento_cerrado ?? '—'} km/h)</small></td><td class="apto-${e.resultado}">${texto[e.resultado]}</td></tr>`;
+  }).join('')}</table>`;
+}
+
 // ------- Render -------
 function render() {
   const datos = calcularTodo();
+  renderPasos();
   renderConfigPanel(datos);
+  renderResumenCorto(datos);
   if (datos.error) {
     document.getElementById('summary').innerHTML = `<div class="aviso rojo">${esc(datos.error)}</div>`;
     document.getElementById('materiales').innerHTML = '';
@@ -304,6 +355,7 @@ function renderConfigPanel({ modelo }) {
     perfilSelect.innerHTML = Object.entries(OPTIMIZADOR.PERFILES).map(([k, p]) => `<option value="${k}">${esc(p.nombre)}</option>`).join('');
   }
   perfilSelect.value = OPTIMIZADOR.PERFILES[state.perfil] ? state.perfil : 'equilibrado';
+  renderAptitud();
   const orientSelect = document.getElementById('orientacion-preferida');
   if (orientSelect.options.length === 0) {
     orientSelect.innerHTML = Object.entries(OPTIMIZADOR.ORIENTACIONES).map(([k, o]) => `<option value="${k}">${esc(o.nombre)}</option>`).join('');
@@ -476,7 +528,6 @@ function renderMateriales({ r }) {
   document.getElementById('materiales').innerHTML = `
     <h3>Lista de materiales
       <span class="acciones-materiales">
-        <button id="btn-excel" class="btn-secundario">&#11015; Excel</button>
         <button id="btn-ver-calculo" class="btn-secundario">${ver ? 'Ocultar cálculo' : 'Ver cálculo'}</button>
       </span>
     </h3>
@@ -849,8 +900,8 @@ function bindEvents() {
       if (!datos.error) renderPlano(datos);
     });
   });
+  document.getElementById('btn-excel').addEventListener('click', descargarExcel);
   document.getElementById('materiales').addEventListener('click', e => {
-    if (e.target.id === 'btn-excel') descargarExcel();
     if (e.target.id === 'btn-ver-calculo') {
       state.verCalculo = !state.verCalculo;
       render();
@@ -873,6 +924,14 @@ function bindEvents() {
     document.body.classList.remove('dialogo-abierto');
   });
   document.getElementById('btn-propuesta').addEventListener('click', abrirPropuesta);
+  // Pasos: barra de arriba (solo los visitados) y Anterior / Siguiente
+  const irA = (nuevo) => { state.pasos = nuevo; render(); window.scrollTo({ top: 0 }); };
+  document.getElementById('barra-pasos').addEventListener('click', e => {
+    const b = e.target.closest('[data-ir]');
+    if (b && !b.disabled) irA(PASOS.ir(state.pasos, b.dataset.ir));
+  });
+  document.getElementById('btn-siguiente').addEventListener('click', () => irA(PASOS.siguiente(state.pasos)));
+  document.getElementById('btn-anterior').addEventListener('click', () => irA(PASOS.anterior(state.pasos)));
   document.getElementById('btn-cerrar-propuesta').addEventListener('click', cerrarPropuesta);
   document.getElementById('btn-imprimir').addEventListener('click', () => window.print());
 }

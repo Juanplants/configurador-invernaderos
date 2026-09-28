@@ -368,7 +368,8 @@
   // Desde el punto (px, py): primero en horizontal hacia la derecha o la
   // izquierda (largo mm); si no cabe, en vertical hasta encima del dibujo
   // (`arriba`: borde superior del dibujo) con el texto centrado. Devuelve '' si no cabe.
-  function rotulo(reg, { px, py, texto: t, tam = 2.5, largo = 12, arriba, limite, nombre, obligatoria = true }) {
+  // evitar: polígonos ([[x, y], …]) que la línea no puede cruzar; corto: primero la línea más corta
+  function rotulo(reg, { px, py, texto: t, tam = 2.5, largo = 12, arriba, limite, nombre, obligatoria = true, evitar = [], corto = false }) {
     const cands = [];
     for (const lado of [1, -1]) {
       for (const extra of [0, 8, 20, 40]) {
@@ -387,12 +388,31 @@
     }
     // La línea sale de dentro del dibujo: puede cruzar su contorno, pero no textos ni otras líneas
     const cajaL = ([x1, y1, x2, y2]) => ({ x: Math.min(x1, x2) - 0.2, y: Math.min(y1, y2) - 0.2, w: Math.abs(x2 - x1) + 0.4, h: Math.abs(y2 - y1) + 0.4 });
-    const libres = cands.filter(c => reg.cajas.every(o => o.tipo === 'dibujo' || !solapan(cajaL(c.l), o)));
+    let libres = cands.filter(c => reg.cajas.every(o => o.tipo === 'dibujo' || !solapan(cajaL(c.l), o))
+      && evitar.every(pol => !cortaPoligono(c.l, pol)));
+    if (corto) libres = libres.map((c, i) => [c, i]).sort((a, b) => (largoL(a[0].l) - largoL(b[0].l)) || a[1] - b[1]).map(x => x[0]);
     const r = reg.colocar(libres, { limite, tipo: 'rotulo', nombre: nombre || t, obligatoria });
     if (!r) return '';
     reg.ocupar(cajaL(r.l), 'referencia');
     return linea(...r.l, LINEA.referencia) + `<circle cx="${n(px)}" cy="${n(py)}" r="0.5" fill="#000"/>`
       + texto(r.p.x, r.p.y, t, tam, { ancla: r.p.ancla, indice: r.indice });
+  }
+
+  const largoL = ([x1, y1, x2, y2]) => Math.hypot(x2 - x1, y2 - y1);
+  // ¿El segmento entra en el polígono o cruza su contorno?
+  function cortaPoligono([x1, y1, x2, y2], pol) {
+    const dentroPol = ([x, y]) => {
+      let d = false;
+      for (let i = 0, j = pol.length - 1; i < pol.length; j = i++) {
+        const [xi, yi] = pol[i], [xj, yj] = pol[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) d = !d;
+      }
+      return d;
+    };
+    const o = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+    const A = [x1, y1], B = [x2, y2];
+    if (dentroPol(A) || dentroPol(B) || dentroPol([(x1 + x2) / 2, (y1 + y2) / 2])) return true;
+    return pol.some((c, i) => { const d = pol[(i + 1) % pol.length]; return o(A, B, c) * o(A, B, d) < 0 && o(c, d, A) * o(c, d, B) < 0; });
   }
 
   // ---------- Perfil del arco ----------
@@ -421,7 +441,7 @@
     A3, MARCO, CAJETIN, LEYENDA, DIBUJO, ESCALAS, LINEA, FUENTE, ASC, DESC,
     anchoTexto, cajaTexto, solapan, dentro, Registro,
     NOTA_CAJETIN, aWinAnsi, enWinAnsi, esc, linea, rect, texto, textoRegistrado, ajustar, fmtCota, mejorEscala, ocupacion, puertasEnHastiales,
-    cadena, burbujas, escalaGrafica, cajetin, fondo, hojaBase, rotulo, puntosArco, puntoDesdeCumbrera
+    cadena, burbujas, escalaGrafica, cajetin, fondo, hojaBase, rotulo, cortaPoligono, puntosArco, puntoDesdeCumbrera
   };
   raiz.HOJA = API;
   if (typeof module !== 'undefined') module.exports = API;

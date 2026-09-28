@@ -225,6 +225,9 @@ function emplazamientoPoligono(h, caso, errores) {
     if (!svgInv) errores.push('falta el invernadero en el SVG');
     for (const v of [g.largo, g.ancho_total]) if (!cotas(h).some(c => c.includes('invernadero total') && c.endsWith(` ${fmt(v)}`))) errores.push(`falta la cota ${fmt(v)}`);
     if (debeCumplir && !h.svg.includes(`Distancia mínima al lindero ${fmt(dist)} m`)) errores.push('falta la distancia mínima en las notas');
+    // El rótulo de la distancia no cruza el invernadero
+    if (d.lineaDistancia && HOJA.cortaPoligono(d.lineaDistancia, G)) errores.push('la línea del rótulo de la distancia cruza el invernadero');
+    if (dist > 0.005 && !d.lineaDistancia && !h.svg.includes('>Distancia mínima al lindero')) errores.push('falta el rótulo de la distancia mínima');
   }
   // Toda la parcela (y sus huecos) dentro del espacio de dibujo, a escala
   const disp = d.disponible;

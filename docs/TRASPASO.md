@@ -12,7 +12,8 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 
 | Ruta | Qué es |
 | --- | --- |
-| `index.html`, `styles.css`, `js/app.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
+| `index.html`, `styles.css`, `js/app.js`, `js/propuesta.js` | Interfaz (base v0.3) **conectada al motor**, en **6 pasos** con el plano siempre a la derecha. Usa el catálogo cargado con «Cargar catálogo» o, si no hay, `datos/catalogo-ejemplo.js` |
+| `js/pasos.js` | Lógica del flujo de 6 pasos (paso actual, visitados, Anterior/Siguiente, saltar a un visitado) |
 | `js/planos/hoja.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas, rótulos, leyenda y cajetín comunes, perfil del arco |
 | `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento |
 | `js/exportar.js` | Exportación de las hojas a **PDF vectorial A3** (escala real al imprimir en A3 al 100 %) |
@@ -31,8 +32,11 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
 | `tests/importacion.js` | Pruebas del importador (36): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
-| `tests/planos.js` | Pruebas de las cinco hojas (233 comprobaciones, 224 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte; con parcela real, norte arriba (o la hoja girada solo si así cabe a mayor escala), invernadero con su orientación real y a escala, distancia mínima exacta, cumple / no cumple / no cabe |
-| `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (224 hojas, 16 sobre parcela real: norte-sur, este-oeste, oblicuo a 35° y 125°, con hueco, sin camino, no cabe, no cumple) |
+| `tests/planos.js` | Pruebas de las cinco hojas (234 comprobaciones, 225 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte; con parcela real, norte arriba (o la hoja girada solo si así cabe a mayor escala), invernadero con su orientación real y a escala, distancia mínima exacta, cumple / no cumple / no cabe, rótulo de la distancia sin cruzar el invernadero |
+| `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (225 hojas, 17 sobre parcela real: norte-sur, este-oeste, oblicuo a 35° y 125°, con hueco, sin camino, casi llena, no cabe, no cumple) |
+| `tests/pasos.js` | Lógica del flujo (16): orden y nombres = apartado 2 de la especificación, avanzar, retroceder, saltar solo a visitados, abrir proyecto |
+| `tests/pasos_navegador.js` | El flujo en la app sin conexión (76): un paso a la vez, barra, Anterior/Siguiente, el plano visible en todos, **cada control en su paso y funcionando**, resumen corto, marca de avisos, aptitud por modelo, abrir proyecto (se omite sin Playwright) |
+| `tests/navegador_pasos.js` | Ayuda de las pruebas en Chromium: ir a un paso como lo haría el usuario |
 | `tests/terreno.js` | Pruebas del terreno y el optimizador (104): GML = KML, UTM contra pyproj, huecos, varios recintos, sistemas y archivos malos; distancia a linderos; pesos = especificación; cada candidata cumple la holgura; cada medida con todas las ventanas cenitales; ninguna de las 3 en rojo de ventilación (y, sin mariposa en el catálogo, las rojas al final con aviso); la mejor de cada modelo + ventana; orientación preferida; misma orientación en croquis y plano; óptimo analítico en una parcela rectangular; un solo criterio → la mejor en ese criterio |
 | `tests/terreno_navegador.js` | En la app sin conexión (60): cargar GML/KML, las 3 mejores = optimizador en node, ventana y aviso en las tarjetas, elegir (también la ventana), misma orientación en tarjeta y plano, orientación preferida este-oeste, planos y PDF, guardar/abrir con parcela, rectángulo a mano (se omite sin Playwright) |
 | `tests/generar_parcelas.py` → `tests/datos/parcela_irregular.gml` / `.kml` | Parcela de ejemplo **inventada** (8 vértices, cóncava, ~4 ha) en formato del Catastro; necesita pyproj |
@@ -57,6 +61,8 @@ node tests/salidas.js
 node tests/salidas_navegador.js  # opcional, necesita Playwright
 node tests/terreno.js
 node tests/terreno_navegador.js  # opcional, necesita Playwright
+node tests/pasos.js
+node tests/pasos_navegador.js    # opcional, necesita Playwright
 ```
 
 Y abrir `index.html` (configurador) o `motor.html` (página de prueba del motor) en el navegador.
@@ -106,6 +112,13 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **En espera de datos del fabricante:** detalles constructivos y cimentación (no empezar hasta tenerlos).
 - **Estética (pendiente, no implementado):** en los alzados sobra espacio vertical por la forma alargada del invernadero. Cuando se retoquen los planos, valorar juntar alzado frontal y sección transversal en una misma hoja A3.
 
+## Interfaz en 6 pasos (fase 5)
+
+- **Barra de pasos** arriba: 1 Proyecto · 2 Emplazamiento · 3 Geometría · 4 Envolvente · 5 Revisión · 6 Salidas (apartado 2 de la especificación). Se ve un paso a la vez; «Anterior» / «Siguiente: <paso>» abajo; en la barra solo se puede pulsar un paso ya visitado. Abrir un proyecto marca todos como visitados. El paso actual no se guarda en el proyecto.
+- **Qué va en cada paso**: 1) código, cliente, ubicación y «Abrir proyecto»; 2) zona de obra local, viento del sitio con la **aptitud de cada modelo** (apto / al límite / no apto), parcela del Catastro o rectángulo a mano, retranqueo, camino y orientación preferida; 3) modelo, naves, ancho, tramos, separación, altura y, «desde el terreno», el optimizador con sus tarjetas; 4) opciones de envolvente del catálogo y puertas; 5) resumen, avisos, precio y lista de materiales con «ver cálculo»; 6) planos en PDF (todos o la hoja que se ve), propuesta, Excel y «Guardar proyecto».
+- **Siempre a la vista**: el plano con sus pestañas (derecha, fijo al desplazar) y, encima del paso, un resumen de una línea (modelo, medidas, m², €/m², total y nº de avisos). La marca de «Revisión» en la barra cuenta los avisos rojos y ámbar.
+- Los identificadores de los controles no cambian: el resto del código y las pruebas siguen valiendo; las pruebas en Chromium van al paso de cada control con `tests/navegador_pasos.js`.
+
 ## Salidas (fase 5)
 
 - **Guardar / abrir proyecto** (sección Proyecto): `<código>_proyecto_<fecha>.json` con todo lo introducido (modelo, geometría, opciones, puertas, zona, viento, parcela, datos del cliente, pestaña) y la identidad del catálogo (nombre, versión, fecha, archivo y huella FNV-1a del contenido). No incrusta el catálogo. Al abrir: huella distinta → aviso (aunque coincidan nombre y versión); modelo que no está en el catálogo cargado → no se abre; opciones o zona que ya no existen → se descartan con aviso.
@@ -128,7 +141,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
-5. **Fase 5 — salidas**: proyecto .json, Excel y propuesta hechos (ver «Salidas»); falta el paso a paso de la interfaz (flujo de 6 pasos de la especificación).
+5. ~~**Fase 5 — salidas y flujo de 6 pasos**~~ **Hecho** (2026-09-28): proyecto .json, Excel y propuesta (ver «Salidas») e interfaz en 6 pasos (ver «Interfaz en 6 pasos»).
 6. ~~**Fase 6 — terreno y optimizador**~~ **Hecho** (2026-09-28): ver «Terreno y optimizador». Falta probarlo con parcelas reales de clientes (sin subirlas al repositorio).
 
 ## Reglas de trabajo
