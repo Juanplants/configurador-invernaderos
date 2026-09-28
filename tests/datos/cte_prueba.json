@@ -1,0 +1,27 @@
+{
+  "fuente": "INVENTADO para las pruebas (misma forma que datos/cte_se_ae.json; valores de nieve no oficiales)",
+  "estado": "prueba",
+  "fecha": "2026-09-28",
+  "viento": { "zonas": { "A": { "vb": 26, "qb": 0.42 }, "B": { "vb": 27, "qb": 0.45 }, "C": { "vb": 29, "qb": 0.52 } } },
+  "categorias_terreno": {
+    "I":   { "k": 0.156, "L": 0.003, "Z": 1.0,  "nombre": "I. Borde del mar o de un lago", "explicacion": "Prueba I." },
+    "II":  { "k": 0.17,  "L": 0.01,  "Z": 1.0,  "nombre": "II. Terreno rural llano", "explicacion": "Prueba II." },
+    "III": { "k": 0.19,  "L": 0.05,  "Z": 2.0,  "nombre": "III. Zona rural accidentada o con obstáculos", "explicacion": "Prueba III." },
+    "IV":  { "k": 0.22,  "L": 0.3,   "Z": 5.0,  "nombre": "IV. Zona urbana, industrial o forestal", "explicacion": "Prueba IV." },
+    "V":   { "k": 0.24,  "L": 1.0,   "Z": 10.0, "nombre": "V. Centro de gran ciudad", "explicacion": "Prueba V." }
+  },
+  "nieve": {
+    "tabla": {
+      "altitudes": [0, 200, 400, 600, 800, 1000, 1200],
+      "zonas": {
+        "1": [0.3, 0.5, 0.6, 0.8, 1.0, 1.2, 1.4],
+        "2": [0.4, 0.5, 0.6, 0.7, 0.9, 1.1, 1.3],
+        "3": [0.2, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0],
+        "4": [0.2, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8],
+        "5": [0.2, 0.3, 0.3, 0.4, 0.5, 0.7, 0.9],
+        "6": [0.2, 0.2, 0.2, 0.3, 0.4, 0.5, 0.6],
+        "7": [0.2, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+      }
+    }
+  }
+}

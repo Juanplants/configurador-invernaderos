@@ -1,0 +1,28 @@
+{
+  "fuente": "CTE DB SE-AE (Seguridad estructural. Acciones en la edificación), anejo D (viento) y anejo E (nieve). https://www.codigotecnico.org/",
+  "estado": "Viento y categorías de terreno transcritos a mano (no descargados): contrastar con el documento oficial. Tabla E.2 de nieve PENDIENTE: rellenar desde el documento oficial.",
+  "fecha": "2026-09-28",
+  "viento": {
+    "nota": "Anejo D.1: velocidad básica vb (m/s) y presión dinámica qb (kN/m²) por zona eólica (figura D.1).",
+    "zonas": {
+      "A": { "vb": 26, "qb": 0.42 },
+      "B": { "vb": 27, "qb": 0.45 },
+      "C": { "vb": 29, "qb": 0.52 }
+    }
+  },
+  "categorias_terreno": {
+    "nota": "Tabla D.2: coeficiente de exposición ce = F·(F + 7k), F = k·ln(max(z, Z)/L).",
+    "I":   { "k": 0.156, "L": 0.003, "Z": 1.0,  "nombre": "I. Borde del mar o de un lago", "explicacion": "Con una superficie de agua de al menos 5 km en la dirección del viento." },
+    "II":  { "k": 0.17,  "L": 0.01,  "Z": 1.0,  "nombre": "II. Terreno rural llano", "explicacion": "Sin obstáculos ni arbolado de importancia. Lo habitual en una finca de invernaderos en llano." },
+    "III": { "k": 0.19,  "L": 0.05,  "Z": 2.0,  "nombre": "III. Zona rural accidentada o con obstáculos", "explicacion": "Llana o accidentada, con obstáculos aislados: árboles, construcciones pequeñas, otros invernaderos." },
+    "IV":  { "k": 0.22,  "L": 0.3,   "Z": 5.0,  "nombre": "IV. Zona urbana, industrial o forestal", "explicacion": "Edificación o arbolado continuos alrededor." },
+    "V":   { "k": 0.24,  "L": 1.0,   "Z": 10.0, "nombre": "V. Centro de gran ciudad", "explicacion": "Con profusión de edificios en altura. Raro para un invernadero." }
+  },
+  "nieve": {
+    "nota": "Tabla E.2: sobrecarga de nieve en terreno horizontal sk (kN/m²) según altitud (m) y zona climática de invierno 1-7 (figura E.2). Mismo número de valores en cada zona que altitudes. Entre filas se interpola linealmente.",
+    "tabla": {
+      "altitudes": [],
+      "zonas": { "1": [], "2": [], "3": [], "4": [], "5": [], "6": [], "7": [] }
+    }
+  }
+}
