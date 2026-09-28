@@ -84,7 +84,7 @@ Nivel A (balances simples: renovaciones/hora, potencia de calefacción, efecto d
 | 1. Catálogo | **Hecho** (`js/importador.js`, `lib/`, `tests/importacion.js`): «Cargar catálogo» lee la plantilla sin internet, la valida (hoja, fila, columna) y la guarda en la sesión | Importa la plantilla y detecta errores provocados |
 | 2. Motor | **Hecho** (`js/motor/`, `tests/`) | Coincide con la referencia independiente y con 63 pilares / 42 cerchas de la v0.3 |
 | 3. Calibración | Espera listas de materiales de fábrica | Acero total ≤ 5 % de desviación frente al fabricante |
-| 4. Planos | En curso: hoja A3 de **planta** hecha (`js/planos/`, `tests/planos.js`, cero solapes en los 24 casos); faltan alzados, sección, detalles, cimentación y emplazamiento | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
+| 4. Planos | En curso: hojas A3 de **planta, alzado frontal, alzado lateral y sección** hechas (`js/planos/`, `tests/planos.js`: cero solapes en 168 hojas); faltan detalles, cimentación, emplazamiento y exportación por hoja | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
 | 5. Interfaz y salidas | En curso: interfaz conectada al motor y al catálogo importado; faltan pasos de emplazamiento/terreno, exportaciones Excel/JSON | Proyecto completo sin tocar código |
 | 6. Terreno | Pendiente | 3 opciones coherentes con una parcela real |
 
