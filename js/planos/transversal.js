@@ -1,7 +1,7 @@
 // ============================================================
 // Hojas A3 transversales: alzado frontal y sección transversal
 // ============================================================
-// PLANOS_A3.alzadoFrontal(datos) / PLANOS_A3.seccion(datos)
+// PLANOS_A3.alzadoFrontal(datos) / PLANOS_A3.seccion(datos) / PLANOS_A3.alzadoYSeccion(datos)
 //   datos: { g, modelo, empresa, proyecto, fecha,
 //            ventana: { lineas: 0|1|2, hoja: m, rendija: m } (solo sección),
 //            puertas: { cantidad, ancho, alto } (solo alzado frontal) }
@@ -11,6 +11,8 @@
 // Si no, se interrumpe: las primeras naves, una interrupción y la última, a la
 // mayor escala en la que quepan al menos dos, y tantas como llenen el ancho.
 // La cota de la interrupción dice cuántas naves faltan y la total es la real.
+// Hoja conjunta (alzadoYSeccion): alzado frontal arriba y sección abajo, si por
+// separado salen a la misma escala y así caben en media hoja cada uno; si no, null.
 
 (function (raiz) {
   const H = raiz.HOJA || (typeof require !== 'undefined' && require('./hoja.js'));
@@ -54,10 +56,11 @@
     return H.mejorEscala((e) => intento(e, n)); // último recurso: entero, a la escala que quepa
   }
 
-  function dibujarTransversal(tipo, { g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null, puertas = null }, escala, mostradas) {
+  // Una vista (alzado frontal o sección) dentro de una zona de la hoja; sin
+  // leyenda ni cajetín, que pone quien la usa (hoja propia o conjunta)
+  function vista(tipo, { g, modelo = {}, ventana = null, puertas = null }, escala, mostradas, zona, reg) {
     const seccion = tipo === 'seccion';
-    const reg = new H.Registro();
-    const partes = [H.fondo()];
+    const partes = [];
     const w = g.ancho_nave, f = g.flecha, hc = g.altura_canal, hm = g.altura_cumbrera;
     const n = g.naves;
 
@@ -67,15 +70,15 @@
     const HUECO = corte ? Math.max(14, H.anchoTexto(textoCorte, 2.5) + 4) : 0;
 
     const disp = {
-      x: DIBUJO.x + BANDA.izquierda + BANDA.margen,
-      y: DIBUJO.y + BANDA.arriba + BANDA.margen,
-      w: DIBUJO.w - BANDA.izquierda - BANDA.derecha - 2 * BANDA.margen,
-      h: DIBUJO.h - BANDA.arriba - BANDA.abajo - 2 * BANDA.margen
+      x: zona.x + BANDA.izquierda + BANDA.margen,
+      y: zona.y + BANDA.arriba + BANDA.margen,
+      w: zona.w - BANDA.izquierda - BANDA.derecha - 2 * BANDA.margen,
+      h: zona.h - BANDA.arriba - BANDA.abajo - 2 * BANDA.margen
     };
     const SUELO_EXTRA = 4; // mm de suelo a cada lado
     const k = 1000 / escala;
     if (mostradas.length * w * k + HUECO + 2 * SUELO_EXTRA > disp.w || hm * k + 3 > disp.h) {
-      return { cabe: false, fallos: [], escala, dibujo: { naves_dibujadas: mostradas.length } };
+      return { cabe: false, dibujo: { naves_dibujadas: mostradas.length } };
     }
     const Wp = mostradas.length * w * k + HUECO;
     const Hp = hm * k;
@@ -175,20 +178,20 @@
     reg.ocupar(huella, 'dibujo');
 
     // --- Ejes: letras en las líneas de pilares, arriba ---
-    partes.push(H.burbujas(reg, { eje: 'h', posiciones: lineasPilares.map(p => p.x), etiquetas: lineasPilares.map(p => letra(p.real)), borde: huella.y, limite: DIBUJO }));
+    partes.push(H.burbujas(reg, { eje: 'h', posiciones: lineasPilares.map(p => p.x), etiquetas: lineasPilares.map(p => letra(p.real)), borde: huella.y, limite: zona }));
 
     // --- Cotas: anchos abajo; alturas (canal, flecha, cumbrera) a la izquierda ---
     const xs = lineasPilares.map(p => p.x);
     const abajo = huella.y + huella.h;
-    partes.push(H.cadena(reg, { eje: 'h', posiciones: [xs[0], xs[xs.length - 1]], valores: [g.ancho_total], textos: [H.fmtCota(g.ancho_total)], origen: abajo, linea: abajo + COTA_2, limite: DIBUJO, nombre: 'ancho total' }));
+    partes.push(H.cadena(reg, { eje: 'h', posiciones: [xs[0], xs[xs.length - 1]], valores: [g.ancho_total], textos: [H.fmtCota(g.ancho_total)], origen: abajo, linea: abajo + COTA_2, limite: zona, nombre: 'ancho total' }));
     if (xs.length > 2) {
       const vanos = xs.slice(1).map((x, i) => (corte && i === ultima ? (n - mostradas.length) * w : w));
       const textos = corte ? vanos.map((v, i) => (i === ultima ? textoCorte : H.fmtCota(v))) : undefined;
-      partes.push(H.cadena(reg, { eje: 'h', posiciones: xs, valores: vanos, textos, origen: abajo, linea: abajo + COTA_1, limite: DIBUJO, nombre: 'naves' }));
+      partes.push(H.cadena(reg, { eje: 'h', posiciones: xs, valores: vanos, textos, origen: abajo, linea: abajo + COTA_1, limite: zona, nombre: 'naves' }));
     }
     const izq = xL - SUELO_EXTRA;
-    partes.push(H.cadena(reg, { eje: 'v', posiciones: [yCumbrera, ySuelo], valores: [hm], origen: izq, linea: izq - COTA_2, limite: DIBUJO, nombre: 'altura a cumbrera total' }));
-    partes.push(H.cadena(reg, { eje: 'v', posiciones: [yCumbrera, yCanal, ySuelo], valores: [f, hc], origen: izq, linea: izq - COTA_1, limite: DIBUJO, nombre: 'canal y flecha' }));
+    partes.push(H.cadena(reg, { eje: 'v', posiciones: [yCumbrera, ySuelo], valores: [hm], origen: izq, linea: izq - COTA_2, limite: zona, nombre: 'altura a cumbrera total' }));
+    partes.push(H.cadena(reg, { eje: 'v', posiciones: [yCumbrera, yCanal, ySuelo], valores: [f, hc], origen: izq, linea: izq - COTA_1, limite: zona, nombre: 'canal y flecha' }));
 
     // --- Rótulo de la ventana cenital (sección) ---
     const notas = ['Cotas en metros. Alturas desde el suelo terminado.'];
@@ -202,7 +205,7 @@
         nota = `Hoja de ${H.fmtCota(ventana.hoja)} m; apertura aprox. ${grados(alfa)}° (rendija ${H.fmtCota(Math.min(ventana.rendija || ventana.hoja, ventana.hoja))} m).`;
       }
       const [px, py] = puntoRotulo;
-      partes.push(H.rotulo(reg, { px, py, texto: t, largo: xR - px + 6, arriba: huella.y, limite: DIBUJO, nombre: 'ventana cenital' }));
+      partes.push(H.rotulo(reg, { px, py, texto: t, largo: xR - px + 6, arriba: huella.y, limite: zona, nombre: 'ventana cenital' }));
       notas.push(nota);
     }
     notas.push('Arco: parábola de luz igual al ancho de nave y flecha del catálogo.');
@@ -224,22 +227,81 @@
       const p = puertasFrente[0];
       notas.push(`Puertas en este frontal: ${puertasFrente.length} de ${H.fmtCota(p.ancho)} × ${H.fmtCota(p.alto)} m${p.entrePilares ? ', entre pilares de hastial' : ''}.`);
     }
-    partes.push(H.hojaBase(reg, {
-      escala, g, modelo, empresa, proyecto, fecha, simbolos, notas,
-      titulo: seccion ? 'SECCIÓN TRANSVERSAL' : 'ALZADO FRONTAL', numero: seccion ? '04' : '02'
-    }));
-
     return {
-      svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`,
-      escala, cajas: reg.cajas, fallos: reg.fallos, cabe: true,
+      cabe: true, svg: partes.join(''), simbolos, notas,
       dibujo: { x: xL, y: yCumbrera, w: Wp, h: Hp, disponible: disp, corte, naves_dibujadas: mostradas.length, hueco: HUECO, apertura: alfa,
                 puertas: puertasFrente.filter(p => mostradas.includes(p.nave)).length }
     };
   }
 
+  // Hoja propia: la vista en todo el espacio de dibujo
+  function dibujarTransversal(tipo, datos, escala, mostradas) {
+    const seccion = tipo === 'seccion';
+    const { g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', numero = seccion ? '04' : '02' } = datos;
+    const reg = new H.Registro();
+    const v = vista(tipo, datos, escala, mostradas, DIBUJO, reg);
+    if (!v.cabe) return { cabe: false, fallos: [], escala, dibujo: v.dibujo };
+    const partes = [H.fondo(), v.svg, H.hojaBase(reg, {
+      escala, g, modelo, empresa, proyecto, fecha, simbolos: v.simbolos, notas: v.notas,
+      titulo: seccion ? 'SECCIÓN TRANSVERSAL' : 'ALZADO FRONTAL', numero
+    })];
+    return { svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`, escala, cajas: reg.cajas, fallos: reg.fallos, cabe: true, dibujo: v.dibujo };
+  }
+
+  // Hoja conjunta: alzado frontal arriba y sección abajo, a la misma escala
+  const SEPARACION = 4; // mm entre las dos mitades
+  function zonasConjunto() {
+    const h = (DIBUJO.h - SEPARACION) / 2;
+    return {
+      frontal: { x: DIBUJO.x, y: DIBUJO.y, w: DIBUJO.w, h },
+      seccion: { x: DIBUJO.x, y: DIBUJO.y + h + SEPARACION, w: DIBUJO.w, h }
+    };
+  }
+  function dibujarConjunto(datos, escala, mostradas) {
+    const { g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', numero = '02' } = datos;
+    const reg = new H.Registro();
+    const zonas = zonasConjunto();
+    const vf = vista('frontal', datos, escala, mostradas, zonas.frontal, reg);
+    const vs = vf.cabe ? vista('seccion', datos, escala, mostradas, zonas.seccion, reg) : { cabe: false };
+    if (!vf.cabe || !vs.cabe) return { cabe: false, fallos: [], escala, dibujo: vf.dibujo || {} };
+    const partes = [H.fondo(), vf.svg, vs.svg];
+    // Línea que separa las dos vistas y título de cada una
+    const ySep = zonas.seccion.y - SEPARACION / 2;
+    partes.push(H.linea(DIBUJO.x, ySep, DIBUJO.x + DIBUJO.w, ySep, LINEA.cota));
+    reg.ocupar({ x: DIBUJO.x, y: ySep - 0.2, w: DIBUJO.w, h: 0.4 }, 'separacion');
+    for (const [clave, t] of [['frontal', 'ALZADO FRONTAL'], ['seccion', 'SECCIÓN TRANSVERSAL']]) {
+      const z = zonas[clave];
+      partes.push(H.textoRegistrado(reg, [{ x: z.x + 3, y: z.y + 6, ancla: 'start' }, { x: z.x + z.w - 3, y: z.y + 6, ancla: 'end' }, { x: z.x + 3, y: z.y + z.h - 3, ancla: 'start' }],
+        t, 3, { limite: z, tipo: 'rotulo', peso: 700, nombre: `título ${t.toLowerCase()}` }));
+    }
+    // Leyenda: los símbolos de las dos vistas sin repetir; notas de las dos, las más importantes primero
+    const simbolos = [];
+    for (const s of vf.simbolos.concat(vs.simbolos)) if (!simbolos.some(x => x[1] === s[1])) simbolos.push(s);
+    const unicas = [...new Set(vf.notas.concat(vs.notas))];
+    const arco = unicas.filter(n => n.startsWith('Arco'));
+    const notas = unicas.filter(n => !n.startsWith('Arco')).concat(arco);
+    partes.push(H.hojaBase(reg, { escala, g, modelo, empresa, proyecto, fecha, simbolos, notas, titulo: 'ALZADO Y SECCIÓN', numero }));
+    return {
+      svg: partes.join(''), viewBox: `0 0 ${H.A3.w} ${H.A3.h}`, escala, cajas: reg.cajas, fallos: reg.fallos, cabe: true, conjunto: true,
+      dibujo: vf.dibujo, dibujos: { frontal: vf.dibujo, seccion: vs.dibujo }, zonas
+    };
+  }
+
+  // Alzado frontal y sección en una hoja, si las dos hojas por separado salen a
+  // la misma escala (y con las mismas naves) y así caben en media hoja cada una.
+  // null si no: entonces van en hojas separadas.
+  function alzadoYSeccion(datos) {
+    const vale = (h) => h && h.cabe && !h.fallos.length;
+    const hf = seleccionar('frontal', datos), hs = seleccionar('seccion', datos);
+    if (!vale(hf) || !vale(hs) || hf.escala !== hs.escala || hf.dibujo.naves_dibujadas !== hs.dibujo.naves_dibujadas) return null;
+    const h = dibujarConjunto(datos, hf.escala, navesDibujadas(datos.g.naves, hf.dibujo.naves_dibujadas));
+    return vale(h) ? h : null;
+  }
+
   const API = {
     alzadoFrontal: (datos) => seleccionar('frontal', datos),
     seccion: (datos) => seleccionar('seccion', datos),
+    alzadoYSeccion, dibujarConjunto, zonasConjunto,
     dibujarTransversal, navesDibujadas, COMPLETO_HASTA,
     apertura
   };

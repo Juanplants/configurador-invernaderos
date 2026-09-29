@@ -51,7 +51,7 @@
     return H.mejorEscala((e) => dibujarEmplazamiento(datos, e));
   }
 
-  function dibujarEmplazamiento({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', parcela }, escala) {
+  function dibujarEmplazamiento({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', numero = '05', parcela }, escala) {
     const e = encaje(g, parcela);
     const reg = new H.Registro();
     const partes = [H.fondo()];
@@ -131,7 +131,7 @@
     ];
     partes.push(H.hojaBase(reg, {
       escala, g, modelo, empresa, proyecto, fecha, notas: notas.filter(Boolean), norte: e.norte,
-      titulo: 'EMPLAZAMIENTO', numero: '05',
+      titulo: 'EMPLAZAMIENTO', numero,
       simbolos: [
         [`<line x1="-4" y1="0" x2="4" y2="0" stroke="#000" stroke-width="0.6" stroke-dasharray="3 1 0.6 1"/>`, 'Lindero'],
         [`<rect x="-4" y="-1" width="8" height="2" fill="#e6e6e6" stroke="#000" stroke-width="${LINEA.contorno}"/>`, 'Invernadero'],
@@ -244,7 +244,7 @@
     return '';
   }
 
-  function dibujarPoligono({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', terreno }, escala, giroHoja = 0) {
+  function dibujarPoligono({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', numero = '05', terreno }, escala, giroHoja = 0) {
     const e = encajePoligono(g, terreno, giroHoja);
     const reg = new H.Registro();
     const partes = [H.fondo()];
@@ -349,7 +349,7 @@
     ];
     partes.push(H.hojaBase(reg, {
       escala, g, modelo, empresa, proyecto, fecha, notas: notas.filter(Boolean), norte: e.norte,
-      titulo: 'EMPLAZAMIENTO', numero: '05',
+      titulo: 'EMPLAZAMIENTO', numero,
       simbolos: [
         [`<line x1="-4" y1="0" x2="4" y2="0" stroke="#000" stroke-width="0.6" stroke-dasharray="3 1 0.6 1"/>`, 'Lindero'],
         [`<rect x="-4" y="-1" width="8" height="2" fill="#e6e6e6" stroke="#000" stroke-width="${LINEA.contorno}"/>`, 'Invernadero'],

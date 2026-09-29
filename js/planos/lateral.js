@@ -20,7 +20,7 @@
     return H.mejorEscala((e) => dibujarLateral(datos, e));
   }
 
-  function dibujarLateral({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', ventana = null, lateral = null }, escala) {
+  function dibujarLateral({ g, modelo = {}, empresa = {}, proyecto = {}, fecha = '', numero = '03', ventana = null, lateral = null }, escala) {
     const reg = new H.Registro();
     const partes = [H.fondo()];
     const hc = g.altura_canal, hm = g.altura_cumbrera;
@@ -99,7 +99,7 @@
     if (alto) notas.push(`Ventana lateral de ${H.fmtCota(alto)} m de alto a lo largo del lateral (posición orientativa).`);
     partes.push(H.hojaBase(reg, {
       escala, g, modelo, empresa, proyecto, fecha, notas,
-      titulo: 'ALZADO LATERAL', numero: '03',
+      titulo: 'ALZADO LATERAL', numero,
       simbolos: [
         [`<rect x="-0.5" y="-1" width="1" height="2" fill="#000"/>`, 'Pilar'],
         [H.linea(-4, 0, 4, 0, LINEA.canal), 'Canal'],
