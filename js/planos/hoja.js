@@ -102,8 +102,9 @@
   // ---------- SVG ----------
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const n = (v) => Math.round(v * 1000) / 1000;
+  // extra puede traer su propio color (stroke="…"): entonces no se pone el negro (atributo repetido = SVG no válido)
   const linea = (x1, y1, x2, y2, grosor, extra = '') =>
-    `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#000" stroke-width="${grosor}" ${extra}/>`;
+    `<line x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}"${/(^|\s)stroke=/.test(extra) ? '' : ' stroke="#000"'} stroke-width="${grosor}" ${extra}/>`;
   const rect = (c, grosor, extra = '') =>
     `<rect x="${n(c.x)}" y="${n(c.y)}" width="${n(c.w)}" height="${n(c.h)}" fill="none" stroke="#000" stroke-width="${grosor}" ${extra}/>`;
   function texto(x, y, t, tam, { ancla = 'middle', rot = 0, peso = 400, indice = null } = {}) {
