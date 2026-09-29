@@ -25,7 +25,7 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `js/terreno/optimizador.js` | **Optimizador** (fase 6): mayor rectángulo útil por orientación, candidatas por modelo/ancho/separación/ventana cenital y puntuación por perfil de prioridad y orientación preferida |
 | `js/terreno/croquis.js` | Croquis en planta (norte arriba) de las tarjetas del optimizador |
 | `js/importador.js` | **Importador y validador del catálogo** (fase 1): lee la plantilla `.xlsx` en el navegador |
-| `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.18.5, jsPDF 4.2.1, svg2pdf.js 2.8.1 (versiones, origen y licencias en `lib/LEEME.md`) |
+| `lib/` | Librerías copiadas para funcionar sin internet: SheetJS 0.20.3, jsPDF 4.2.1, svg2pdf.js 2.8.1 (versiones, origen y licencias en `lib/LEEME.md`) |
 | `js/motor/` | **Motor de cálculo v0.4** (fase 2): expresiones, geometría, materiales, precios, avisos |
 | `motor.html` | Página de prueba del motor con el catálogo de ejemplo (doble clic) |
 | `datos/Catalogo_Plantilla_v0.4.xlsx` | Plantilla del catálogo, rellena con un **ejemplo de valores estimados** |
@@ -163,7 +163,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 
 ## Siguientes pasos (en orden)
 
-1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 en cuanto el usuario pase el archivo (desde aquí no se llega a `cdn.sheetjs.com`): `node herramientas/cambiar_sheetjs.js <archivo>` lo comprueba y lo cambia (ver `lib/LEEME.md`).
+1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». SheetJS actualizado a la 0.20.3 (29-09-2026) con `herramientas/cambiar_sheetjs.js` (ver `lib/LEEME.md`).
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
