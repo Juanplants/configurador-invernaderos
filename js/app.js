@@ -662,10 +662,10 @@ function renderMateriales({ r }) {
   `;
 }
 
-// Planos: cuatro hojas A3 a escala (js/planos/). La ventana que dibujan sale
-// del resultado del motor, así coincide con la lista de materiales.
+// Planos: hojas A3 a escala (js/planos/). La ventana que dibujan sale del
+// resultado del motor, así coincide con la lista de materiales. Qué hojas hay y
+// su número los decide PLANOS_A3.juego (alzado frontal y sección juntos si caben).
 const PLANOS_VISTAS = { planta: 'planta', 'alzado-frontal': 'alzadoFrontal', 'alzado-lateral': 'alzadoLateral', seccion: 'seccion', emplazamiento: 'emplazamiento' };
-const PLANOS_ARCHIVO = { planta: '01-planta', alzadoFrontal: '02-alzado-frontal', alzadoLateral: '03-alzado-lateral', seccion: '04-seccion', emplazamiento: '05-emplazamiento' };
 
 // Parcela introducida a mano: solo cuenta con largo y ancho positivos
 function parcelaDelProyecto() {
@@ -715,13 +715,12 @@ function ventanasDelProyecto(r) {
   };
 }
 
-// Devuelve la hoja, o null si es el emplazamiento y no hay parcela
-function plano(r, clave) {
+// Datos comunes a todas las hojas
+function datosPlanos(r) {
   const t = state.terreno;
   const parcela = t ? null : parcelaDelProyecto();
   const imp = t ? implantacionActual(r.geometria) : null;
-  if (clave === 'emplazamiento' && !parcela && !t) return null;
-  return PLANOS_A3[clave](Object.assign({
+  return Object.assign({
     g: r.geometria, modelo: getModelo(), empresa: CATALOGO.empresa || {},
     proyecto: { cliente: state.cliente, ubicacion: state.ubicacion, codigo: state.codigoProyecto },
     fecha: new Date().toLocaleDateString('es-ES'),
@@ -729,12 +728,22 @@ function plano(r, clave) {
     terreno: t ? { anillos: t.anillos, meta: t.meta, implantacion: imp, retranqueo: parseFloat(state.retranqueo) || 0, camino: parseFloat(state.camino) || 0 } : undefined,
     // Con parcela se conoce el norte: la planta lo dibuja
     orientacion: imp ? imp.azimut : parcela ? PLANOS_A3.encaje(r.geometria, parcela).azimutInvernadero : undefined
-  }, ventanasDelProyecto(r)));
+  }, ventanasDelProyecto(r));
 }
 
-// Hojas en orden (01…05); el emplazamiento solo si hay parcela
+// Juego de planos del proyecto: [{ clave, vistas, titulo, archivo, numero, hoja }]
+// (cada hoja se dibuja al pedirla); el emplazamiento solo si hay parcela
+const juegoPlanos = (r) => PLANOS_A3.juego(datosPlanos(r));
+
+// La hoja que muestra una pestaña, o null si es el emplazamiento y no hay parcela
+function plano(r, clave) {
+  const h = PLANOS_A3.deVista(juegoPlanos(r), clave);
+  return h ? h.hoja : null;
+}
+
+// Todas las hojas, dibujadas, en orden
 function generarPlanos(r) {
-  return Object.fromEntries(Object.values(PLANOS_VISTAS).map(k => [k, plano(r, k)]).filter(([, h]) => h));
+  return juegoPlanos(r).map(h => ({ clave: h.clave, titulo: h.titulo, numero: h.numero, archivo: h.archivo, hoja: h.hoja }));
 }
 
 const HOJA_SIN_PARCELA = {
@@ -769,18 +778,18 @@ async function descargarPlanos(soloEsta) {
   const estado = document.getElementById('pdf-estado');
   const { r, error } = calcularTodo();
   if (error) return;
-  const planos = generarPlanos(r);
-  const clave = PLANOS_VISTAS[state.vistaActual];
-  if (soloEsta && !planos[clave]) { estado.textContent = 'Esta hoja necesita la parcela (del Catastro o sus medidas).'; return; }
-  const claves = soloEsta ? [clave] : Object.keys(planos);
-  const nombre = EXPORTAR.nombreArchivo(state.codigoProyecto, soloEsta ? PLANOS_ARCHIVO[clave] : 'planos');
+  const j = juegoPlanos(r);
+  const actual = PLANOS_A3.deVista(j, PLANOS_VISTAS[state.vistaActual]);
+  if (soloEsta && !actual) { estado.textContent = 'Esta hoja necesita la parcela (del Catastro o sus medidas).'; return; }
+  const hojas = soloEsta ? [actual] : j;
+  const nombre = EXPORTAR.nombreArchivo(state.codigoProyecto, soloEsta ? actual.archivo : 'planos');
   estado.textContent = 'Generando PDF…';
   try {
-    await EXPORTAR.descargar(claves.map(k => planos[k]), nombre, {
+    await EXPORTAR.descargar(hojas.map(h => h.hoja), nombre, {
       titulo: `Planos ${state.codigoProyecto || ''} ${state.cliente || ''}`.trim(),
       autor: (CATALOGO.empresa || {}).nombre || ''
     });
-    estado.textContent = `${nombre}: ${claves.length} hoja${claves.length > 1 ? 's' : ''} A3. Imprimir al 100 % (tamaño real).`;
+    estado.textContent = `${nombre}: ${hojas.length} hoja${hojas.length > 1 ? 's' : ''} A3. Imprimir al 100 % (tamaño real).`;
   } catch (e) {
     estado.textContent = `No se pudo generar el PDF: ${e.message}`;
   }

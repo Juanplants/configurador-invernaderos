@@ -171,27 +171,27 @@ const PROPUESTA = {
     `;
   },
 
+  // planos: juego de planos en orden, [{ clave, titulo, numero, hoja }] (PLANOS_A3.juego)
   _planos(planos) {
-    if (!planos) return '';
-    const orden = [['planta', 'Planta general'], ['alzadoFrontal', 'Alzado frontal'], ['alzadoLateral', 'Alzado lateral'],
-      ['seccion', 'Sección transversal'], ['emplazamiento', 'Emplazamiento']].filter(([k]) => planos[k]);
-    const hoja = ([k, titulo]) => `
-      <section class="hoja-a3" data-plano="${k}" aria-label="${titulo}">
-        <svg class="plano-a3" viewBox="${planos[k].viewBox}" xmlns="http://www.w3.org/2000/svg">${planos[k].svg}</svg>
+    if (!planos || !planos.length) return '';
+    const orden = planos.filter(p => p.hoja);
+    const hoja = (p) => `
+      <section class="hoja-a3" data-plano="${p.clave}" aria-label="${this._esc(p.titulo)}">
+        <svg class="plano-a3" viewBox="${p.hoja.viewBox}" xmlns="http://www.w3.org/2000/svg">${p.hoja.svg}</svg>
       </section>`;
     return `
       <section class="page">
         <h3>1.3 Planos del proyecto</h3>
         <p>
           Se incluyen a continuación, en hojas A3, los planos del invernadero:
-          ${orden.map(([, t]) => t.toLowerCase()).join(', ')}. Todas las cotas están
+          ${orden.map(p => p.titulo.toLowerCase()).join(', ')}. Todas las cotas están
           expresadas en metros. Impresos en A3 al 100 % (tamaño real), la escala
           indicada en cada cajetín es exacta; a otro tamaño, vale la escala gráfica.
         </p>
         <p class="disclaimer">
           Planos informativos de oferta. No válidos para ejecución ni tramitación.
         </p>
-        <ol>${orden.map(([k, t]) => `<li>${t} (1:${planos[k].escala})</li>`).join('')}</ol>
+        <ol>${orden.map(p => `<li>${p.numero}. ${p.titulo} (1:${p.hoja.escala})</li>`).join('')}</ol>
       </section>
       ${orden.map(hoja).join('')}
     `;
