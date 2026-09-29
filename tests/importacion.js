@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const XLSX = require('../lib/xlsx.mini.min.js');
+const XLSX = require('./xlsx_lib.js');
 const IMPORTADOR = require('../js/importador.js');
 
 let fallos = 0, ok = 0;

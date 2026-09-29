@@ -12,7 +12,7 @@
 const PROYECTO = require('../js/proyecto.js');
 const EXCEL = require('../js/excel.js');
 const MOTOR = require('../js/motor/motor.js');
-const XLSX = require('../lib/xlsx.mini.min.js');
+const XLSX = require('./xlsx_lib.js');
 const PROPUESTA = require('../js/propuesta.js');
 const HOJAS = require('./hojas_de_prueba.js');
 const catalogo = require('../datos/catalogo-ejemplo.json');
@@ -153,12 +153,11 @@ console.log('3. Propuesta comercial');
 {
   const proyecto = { modelo: 'MT-GOT-80', naves: 3, tramos: 11, altura_canal: 4.5, puertas: 1, zona: 'Almería' };
   const estado = { cliente: 'Finca La Prueba', ubicacion: 'Níjar', codigoProyecto: '26JD001' };
-  // Planos reales (las cinco hojas) para la geometría del proyecto
-  function planosDe(cat, r) {
+  // Planos reales (el juego de hojas, como en la app) para la geometría del proyecto
+  function planosDe(cat, r, parcela = { largo: 80, ancho: 50, orientacion: 20 }) {
     const modelo = cat.modelos.find(m => m.id === r.modelo.id);
-    const d = Object.assign(HOJAS.datos({ g: r.geometria, modelo, parcela: { largo: 80, ancho: 50, orientacion: 20 } }), { empresa: cat.empresa });
-    return { planta: HOJAS.PLANTA.planta(d), alzadoFrontal: HOJAS.TRANSVERSAL.alzadoFrontal(d), alzadoLateral: HOJAS.LATERAL.alzadoLateral(d),
-      seccion: HOJAS.TRANSVERSAL.seccion(d), emplazamiento: HOJAS.EMPLAZAMIENTO.emplazamiento(d) };
+    const d = Object.assign(HOJAS.datos({ g: r.geometria, modelo, parcela }), { empresa: cat.empresa });
+    return HOJAS.JUEGO.juego(d).map(h => ({ clave: h.clave, titulo: h.titulo, numero: h.numero, hoja: h.hoja }));
   }
   const generar = (cat) => {
     const r = MOTOR.calcular(cat, proyecto);
@@ -187,6 +186,13 @@ console.log('3. Propuesta comercial');
   comprobar('nota de plano informativo en el texto y en cada cajetín', html.includes('Planos informativos de oferta. No válidos para ejecución ni tramitación.')
     && (html.match(/Plano informativo de oferta\. No válido para ejecución ni tramitación\./g) || []).length === 5);
   comprobar('el distribuidor también en el cajetín de los planos', (html.match(/>Invernaderos del Poniente S\.L\.</g) || []).length >= 5);
+  comprobar('índice de planos con número y escala', /<li>01\. Planta general \(1:\d+\)<\/li>/.test(html) && /<li>04\. Sección transversal \(1:\d+\)<\/li>/.test(html));
+  // Con 6 naves, alzado frontal y sección van en una hoja: cuatro hojas A3
+  const r6 = MOTOR.calcular(propio, Object.assign({}, proyecto, { modelo: 'MT-GOT-96', naves: 6, tramos: 22 }));
+  const html6 = PROPUESTA.generar({ state: estado, catalogo: propio, r: r6, perfiles: propio.perfiles, planos: planosDe(propio, r6, { largo: 150, ancho: 90, orientacion: 0 }) });
+  const hojas6 = [...html6.matchAll(/<section class="hoja-a3" data-plano="(\w+)"/g)].map(m => m[1]);
+  comprobar('6 naves: alzado y sección en una hoja (cuatro A3)', JSON.stringify(hojas6) === '["planta","alzadoSeccion","alzadoLateral","emplazamiento"]', JSON.stringify(hojas6));
+  comprobar('6 naves: índice renumerado', html6.includes('<li>02. Alzado frontal y sección transversal (1:') && html6.includes('<li>04. Emplazamiento (1:'));
 
   // Estimados: cada valor que depende de un dato estimado lleva asterisco, y los del fabricante no
   function comprobarMarcas(nombre, cat) {

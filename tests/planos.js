@@ -240,17 +240,67 @@ function emplazamientoPoligono(h, caso, errores) {
   if (terreno.anillos.length > 1 && (h.svg.match(/fill-rule="evenodd"/g) || []).length < 1) errores.push('no se dibujan los huecos');
 }
 
-const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion, emplazamiento };
+// Alzado frontal y sección en una hoja: solo si por separado salen a la misma
+// escala y con las mismas naves, y así caben las dos vistas en media hoja; cada
+// vista en su mitad, con su título, y leyenda y cajetín comunes
+function alzadoSeccion(h, caso, errores) {
+  const d = HOJAS.datos(caso);
+  const f = HOJAS.TRANSVERSAL.alzadoFrontal(d), s = HOJAS.TRANSVERSAL.seccion(d);
+  if (!h) {
+    if (caso.debeJuntarse) errores.push('debería ir en una hoja');
+    // Separadas con motivo: otra escala u otras naves, o a esa escala no caben en media hoja
+    const mismas = f.escala === s.escala && f.dibujo.naves_dibujadas === s.dibujo.naves_dibujadas;
+    if (mismas && !noVale(HOJAS.TRANSVERSAL.dibujarConjunto(d, f.escala, HOJAS.TRANSVERSAL.navesDibujadas(caso.naves, f.dibujo.naves_dibujadas)))) errores.push('cabría en una hoja y va aparte');
+    return;
+  }
+  if (caso.debeJuntarse === false) errores.push('no debería juntarse');
+  comunes(h, errores);
+  if (h.escala !== f.escala || h.escala !== s.escala) errores.push(`escala 1:${h.escala}; por separado 1:${f.escala} y 1:${s.escala}`);
+  for (const t of ['ALZADO FRONTAL', 'SECCIÓN TRANSVERSAL', 'ALZADO Y SECCIÓN']) if (!h.svg.includes(`>${t}<`)) errores.push(`falta «${t}»`);
+  if (!h.svg.includes('>02<')) errores.push('el cajetín no dice 02');
+  for (const v of ['frontal', 'seccion']) {
+    const z = h.zonas[v], dd = h.dibujos[v];
+    if (!HOJA.dentro(dd.disponible, z) || !HOJA.dentro({ x: dd.x, y: dd.y, w: dd.w, h: dd.h }, dd.disponible)) errores.push(`la vista ${v} se sale de su mitad`);
+    if (!casi(dd.w, (dd.naves_dibujadas * caso.g.ancho_nave * 1000 / h.escala) + dd.hueco)) errores.push(`la vista ${v} no está a la escala del cajetín`);
+    // Cada texto de cota/eje/rótulo de la vista, en su mitad
+    const fuera = h.cajas.filter(c => ['cota', 'eje', 'rotulo'].includes(c.tipo) && (c.nombre || '').length && !HOJA.dentro(c, h.zonas.frontal) && !HOJA.dentro(c, h.zonas.seccion));
+    if (fuera.length) errores.push(`textos entre las dos mitades: ${fuera.map(c => c.nombre).join(', ')}`);
+  }
+  if (h.dibujos.seccion.apertura !== f.dibujo.apertura && caso.ventana && (h.dibujos.seccion.apertura === 0)) errores.push('la sección perdió la ventana');
+  const puertas = (h.svg.match(/data-puerta=/g) || []).length;
+  if (puertas !== f.dibujo.puertas) errores.push(`${puertas} puertas en el alzado conjunto, ${f.dibujo.puertas} en el separado`);
+}
+
+const COMPROBAR = { planta, alzadoFrontal: transversal, alzadoLateral: lateral, seccion, emplazamiento, alzadoSeccion };
 
 for (const caso of HOJAS.casos()) {
   const h = HOJAS.generar(caso);
   const errores = [];
-  comunes(h, errores);
+  if (caso.vista !== 'alzadoSeccion') comunes(h, errores);
   COMPROBAR[caso.vista](h, caso, errores);
   recuento[caso.vista] = (recuento[caso.vista] || 0) + 1;
-  comprobar(`${caso.nombre} (1:${h.escala})`, errores.length === 0, '\n      ' + errores.slice(0, 8).join('\n      '));
+  comprobar(`${caso.nombre} (${h ? '1:' + h.escala : 'separadas'})`, errores.length === 0, '\n      ' + errores.slice(0, 8).join('\n      '));
 }
 console.log('Hojas comprobadas:', Object.entries(recuento).map(([v, n]) => `${v} ${n}`).join(', '));
+
+// Juego de planos: orden, números correlativos en el cajetín y archivos
+{
+  const m = HOJAS.catalogo.modelos.find(x => x.id === 'MT-GOT-96');
+  const parcela = { largo: 200, ancho: 120, orientacion: 0 };
+  const caso = (naves, conParcela) => HOJAS.datos({ g: HOJAS.GEO.calcular(m, { naves, tramos: 20 }), modelo: m, parcela: conParcela ? parcela : undefined });
+  const resumen = (j) => j.map(h => `${h.numero} ${h.clave}`).join(', ');
+  const separado = HOJAS.JUEGO.juego(caso(3, true));
+  comprobar('3 naves: cinco hojas, alzado y sección aparte', resumen(separado) === '01 planta, 02 alzadoFrontal, 03 alzadoLateral, 04 seccion, 05 emplazamiento', resumen(separado));
+  const junto = HOJAS.JUEGO.juego(caso(6, true));
+  comprobar('6 naves: cuatro hojas, alzado y sección juntos (02), emplazamiento 04', resumen(junto) === '01 planta, 02 alzadoSeccion, 03 alzadoLateral, 04 emplazamiento', resumen(junto));
+  comprobar('sin parcela: sin emplazamiento', resumen(HOJAS.JUEGO.juego(caso(6, false))) === '01 planta, 02 alzadoSeccion, 03 alzadoLateral');
+  for (const j of [separado, junto]) {
+    const mal = j.filter(h => !h.hoja.svg.includes(`>${h.numero}<`) || !h.archivo.startsWith(h.numero + '-'));
+    comprobar(`juego de ${j.length} hojas: cada cajetín con su número y archivo`, mal.length === 0, mal.map(h => h.clave).join(', '));
+  }
+  comprobar('las pestañas de alzado frontal y sección muestran la hoja conjunta', HOJAS.JUEGO.deVista(junto, 'seccion') === HOJAS.JUEGO.deVista(junto, 'alzadoFrontal') && HOJAS.JUEGO.deVista(junto, 'seccion').clave === 'alzadoSeccion');
+  comprobar('archivo de la hoja conjunta', junto[1].archivo === '02-alzado-frontal-y-seccion');
+}
 
 // Ejemplo del encargo: 10 × 9,60 × 80 m → planta girada a 1:500
 {

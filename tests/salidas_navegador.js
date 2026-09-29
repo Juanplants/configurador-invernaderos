@@ -11,7 +11,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const XLSX = require('../lib/xlsx.mini.min.js');
+const XLSX = require('./xlsx_lib.js');
 const EXPORTAR = require('../js/exportar.js');
 const { irA } = require('./navegador_pasos.js');
 
@@ -137,7 +137,9 @@ function comprobar(nombre, condicion, detalle) {
   comprobar('en impresión no sale la barra de pasos', await p.$eval('#barra-pasos', el => getComputedStyle(el).display) === 'none');
   const medidas = await p.$$eval('section.hoja-a3 svg.plano-a3', svgs => svgs.map(s => { const r = s.getBoundingClientRect(); return [r.width, r.height]; }));
   const mm = (px) => px * 25.4 / 96;
-  comprobar('5 planos en la propuesta', medidas.length === 5, `${medidas.length}`);
+  // 6 naves: alzado frontal y sección caben en una hoja → cuatro planos
+  const planosProp = await p.$$eval('section.hoja-a3', ss => ss.map(x => x.dataset.plano));
+  comprobar('4 planos en la propuesta, alzado y sección juntos', medidas.length === 4 && JSON.stringify(planosProp) === '["planta","alzadoSeccion","alzadoLateral","emplazamiento"]', JSON.stringify(planosProp));
   comprobar('en impresión cada plano mide 420 × 297 mm', medidas.every(([w, h]) => Math.abs(mm(w) - 420) < 0.1 && Math.abs(mm(h) - 297) < 0.1), JSON.stringify(medidas.map(([w, h]) => [mm(w).toFixed(1), mm(h).toFixed(1)])));
   const pdf = await p.pdf({ preferCSSPageSize: true, printBackground: true });
   fs.writeFileSync(path.join(dir, 'propuesta.pdf'), pdf);
@@ -145,7 +147,7 @@ function comprobar(nombre, condicion, detalle) {
     .map(b => [Math.round((b[2] - b[0]) * 25.4 / 72), Math.round((b[3] - b[1]) * 25.4 / 72)]);
   const a3 = cajas.filter(([w, h]) => w === 420 && h === 297).length;
   const a4 = cajas.filter(([w, h]) => w === 210 && h === 297).length;
-  comprobar('PDF de la propuesta: 5 páginas A3 apaisadas (planos)', a3 === 5, JSON.stringify(cajas));
+  comprobar('PDF de la propuesta: 4 páginas A3 apaisadas (planos)', a3 === 4, JSON.stringify(cajas));
   comprobar('PDF de la propuesta: el resto A4 vertical', a4 >= 6 && a4 + a3 === cajas.length, JSON.stringify(cajas));
   const texto = await p.locator('#propuesta-container').innerText();
   comprobar('propuesta: nota de planos informativos', texto.includes('No válidos para ejecución ni tramitación'));

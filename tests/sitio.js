@@ -239,7 +239,7 @@ console.log('8. Herramienta de conversión');
 
 console.log('9. Catálogo: base del viento declarado');
 {
-  const XLSX = require('../lib/xlsx.mini.min.js');
+  const XLSX = require('./xlsx_lib.js');
   const IMPORTADOR = require('../js/importador.js');
   const libro = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'datos', 'Catalogo_Plantilla_v0.4.xlsx')));
   const cab = XLSX.utils.sheet_to_json(libro.Sheets.Modelos, { header: 1 })[3];
