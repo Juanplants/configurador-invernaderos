@@ -56,17 +56,60 @@
       <!-- 2. Emplazamiento -->
       <section class="paso config-panel" data-paso="emplazamiento" hidden>
         <h2>2. Emplazamiento</h2>
+        <p class="hint">Zona e&oacute;lica y zona de clima invernal: consulta las figuras D.1 y E.2 del CTE DB SE-AE.</p>
+        <div class="field" id="campo-municipio" hidden>
+          <label>Municipio (tabla)</label>
+          <input type="text" id="municipio" list="lista-municipios" autocomplete="off" placeholder="Escribe el municipio">
+          <datalist id="lista-municipios"></datalist>
+        </div>
         <div class="field-row">
           <div class="field">
-            <label>Zona (obra local)</label>
-            <select id="zona"></select>
+            <label>Zona e&oacute;lica (fig. D.1)</label>
+            <select id="zona-eolica"></select>
           </div>
           <div class="field">
-            <label>Viento de dise&ntilde;o del sitio (km/h)</label>
-            <input type="number" id="viento" min="0" placeholder="Opcional">
+            <label>Zona de clima invernal (fig. E.2)</label>
+            <select id="zona-invierno"></select>
           </div>
         </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Capital de provincia (atajo, tabla 3.8)</label>
+            <select id="capital-cte"></select>
+          </div>
+          <div class="field">
+            <label>Altitud (m)</label>
+            <input type="number" id="altitud" min="0" step="1" placeholder="—">
+          </div>
+        </div>
+        <div id="sitio-info"></div>
+        <div class="field-row">
+          <div class="field">
+            <label>Viento del sitio (km/h) <span class="origen" id="viento-origen"></span></label>
+            <input type="number" id="viento" min="0" step="0.1" placeholder="—">
+          </div>
+          <div class="field">
+            <label>Nieve del sitio (kg/m²) <span class="origen" id="nieve-origen"></span></label>
+            <input type="number" id="nieve" min="0" step="1" placeholder="—">
+          </div>
+        </div>
+        <button id="btn-cargas-municipio" class="btn-secundario" hidden>&#8634; Usar los valores del CTE</button>
+        <div class="field-row">
+          <div class="field">
+            <label>Categor&iacute;a de terreno (CTE)</label>
+            <select id="categoria-terreno"></select>
+          </div>
+          <div class="field">
+            <label>Pendiente del terreno (%)</label>
+            <input type="number" id="pendiente" min="0" step="0.5" placeholder="—">
+          </div>
+        </div>
+        <p class="hint" id="categoria-explicacion"></p>
         <div id="aptitud-modelos"></div>
+        <div class="field">
+          <label>Zona (obra local)</label>
+          <select id="zona"></select>
+        </div>
         <h2>Parcela</h2>
         <p class="hint">Opcional: la del Catastro o un rect&aacute;ngulo a mano. Activa el plano de emplazamiento y el optimizador.</p>
         <button id="btn-cargar-parcela" class="btn-secundario">&#128506; Cargar parcela del Catastro (GML o KML)</button>
@@ -258,6 +301,8 @@
   <script src="js/planos/planta.js"></script>
   <script src="js/planos/transversal.js"></script>
   <script src="js/planos/lateral.js"></script>
+  <script src="datos/municipios.js"></script>
+  <script src="js/sitio.js"></script>
   <script src="js/terreno/parcela.js"></script>
   <script src="js/terreno/optimizador.js"></script>
   <script src="js/terreno/croquis.js"></script>

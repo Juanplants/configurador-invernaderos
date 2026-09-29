@@ -20,7 +20,9 @@
     seleccion: 'objeto', opcionales: 'lista', zona: 'texto', viento_kmh: 'numeroOVacio',
     parcela: 'objeto', cliente: 'texto', ubicacion: 'texto', codigoProyecto: 'texto', vistaActual: 'texto',
     // Fase 6: parcela del Catastro (polígono en metros e implantación elegida), retranqueos y perfil
-    terreno: 'terreno', retranqueo: 'numero', camino: 'numero', perfil: 'texto', orientacion_preferida: 'texto'
+    terreno: 'terreno', retranqueo: 'numero', camino: 'numero', perfil: 'texto', orientacion_preferida: 'texto',
+    // Sitio: municipio, categoría de terreno, pendiente y qué cargas se escribieron a mano
+    nieve_kgm2: 'numeroOVacio', sitio: 'objeto'
   };
   // Polígono: anillos de puntos [x, y] numéricos, el exterior con 3 o más
   const esPunto = (p) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite);

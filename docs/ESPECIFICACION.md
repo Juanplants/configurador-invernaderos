@@ -15,7 +15,7 @@ Herramienta para que un **distribuidor de invernaderos** pase de unas medidas o 
 ## 2. Flujo de uso (6 pasos)
 
 1. **Proyecto** — cliente, código, ubicación.
-2. **Emplazamiento** — referencia catastral (GML/KML del Catastro) o coordenadas; zona de viento y nieve automática por municipio (tabla CTE incluida); categoría de terreno guiada; pendiente manual. Resultado por modelo: **apto / al límite / no apto–requiere cálculo**. Se comprueba antes de diseñar.
+2. **Emplazamiento** — referencia catastral (GML/KML del Catastro) o coordenadas; zona eólica (fig. D.1) y zona de clima invernal (fig. E.2) elegidas por el usuario, con la altitud, o capital de provincia (tabla 3.8) como atajo: viento y nieve del CTE DB SE-AE (el CTE no trae tabla por municipio); categoría de terreno guiada; pendiente manual. Resultado por modelo: **apto / al límite / no apto–requiere cálculo**. Se comprueba antes de diseñar.
 3. **Geometría** — modelo + naves + tramos, o desde terreno (el optimizador propone las 3 mejores).
 4. **Envolvente** — ventilación, cerramiento, puertas, malla.
 5. **Revisión** — lista de materiales, precio, avisos.
@@ -30,7 +30,7 @@ El código no contiene datos de producto. Cambiar de fábrica = cambiar este arc
 | Hoja | Contenido |
 | --- | --- |
 | Empresa | Nombre, logo, moneda, IVA, condiciones, garantías |
-| Modelos | Anchos de nave, separaciones entre pórticos y alturas admitidas; flecha; máximos; cargas declaradas; ancho de hoja cenital; separación de pilares de hastial; kg de arriostramiento por juego |
+| Modelos | Anchos de nave, separaciones entre pórticos y alturas admitidas; flecha; máximos; cargas declaradas y base del viento declarado (velocidad media, ráfaga o presión kN/m²); ancho de hoja cenital; separación de pilares de hastial; kg de arriostramiento por juego |
 | Perfiles | Piezas de acero con kg/m y precio por kg o por metro |
 | Componentes | Cada partida con su **regla de cantidad**, factor, grupo de alternativas, precio |
 | Cubiertas | Films, mallas, placas con propiedades físicas (transmisión, U, factor de paso de aire) |
@@ -87,6 +87,7 @@ Nivel A (balances simples: renovaciones/hora, potencia de calefacción, efecto d
 | 4. Planos | En curso: hojas A3 de **planta, alzados, sección y emplazamiento** con puertas, y **PDF A3** a escala real (`js/planos/`, `js/exportar.js`; `tests/planos.js`: cero solapes y ≥ 50 % de ocupación en 218 hojas); detalles y cimentación esperan datos del fabricante | Cero solapes en 1/2/5/10 naves × 10/20/60 tramos |
 | 5. Interfaz y salidas | **Hecho**: interfaz conectada al motor y al catálogo importado, en el flujo de 6 pasos con el plano siempre visible (`js/pasos.js`, `tests/pasos.js`, `tests/pasos_navegador.js`); emplazamiento con parcela rectangular o del Catastro; salidas (planos en PDF, proyecto .json, Excel con hoja de petición de oferta, propuesta con planos A3; `tests/salidas.js`) | Proyecto completo sin tocar código |
 | 6. Terreno | **Hecho** (`js/terreno/`, `tests/terreno.js`, `tests/terreno_navegador.js`): parcela GML/KML del Catastro sin conexión, retranqueo y camino perimetral, optimizador con perfiles, 3 mejores con croquis y emplazamiento con el polígono real; probado con una parcela irregular inventada | 3 opciones coherentes con una parcela real |
+| 6b. Viento y nieve del sitio | **Hecho** (`js/sitio.js`, `datos/cte_se_ae.json`, `tests/sitio.js`, `tests/sitio_navegador.js`): zonas y altitud elegidas por el usuario o capital (tabla 3.8), tabla E.2 con «fuera de tabla, requiere estudio», categoría de terreno, pendiente, comparación con lo declarado y tabla en la propuesta; tabla de municipios opcional (vacía) | Viento y nieve del CTE para cualquier emplazamiento |
 
 ## 10. Decisiones abiertas / datos a pedir a fabricantes
 

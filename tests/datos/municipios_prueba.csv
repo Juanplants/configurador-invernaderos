@@ -1,0 +1,6 @@
+codigo_ine;codigo_catastro;provincia;municipio;altitud_m;zona_eolica;zona_invierno
+# Municipios INVENTADOS para las pruebas: no son datos del CTE ni del INE.
+99001;99101;Provincia de Ensayo;Villaprueba;40;A;6
+99002;99102;Provincia de Ensayo;Sierra de Ensayo;1100;C;3
+99003;99103;Provincia de Ensayo;Llanos de Prueba;650;B;4
+98001;98201;Otra Provincia;Villaprueba;300;B;5

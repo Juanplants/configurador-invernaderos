@@ -44,6 +44,10 @@
     return /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t) ? parseFloat(t) : NaN;
   }
 
+  // Base del viento que declara el fabricante (hoja Modelos): con qué se compara el viento del sitio
+  const BASES_VIENTO_TEXTO = '«velocidad media», «ráfaga» o «presión kN/m²»';
+  const normalizarBase = (v) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const BASES_VIENTO = ['velocidad media', 'rafaga', 'presion kn/m²', 'presion kn/m2'];
   const vacio = (v) => v === undefined || v === null || v === '';
   const lista = (v, sep) => String(v).split(sep).map(s => s.trim());
 
@@ -167,6 +171,10 @@
       if (typeof m.flecha_del_arco !== 'number' || !(m.flecha_del_arco >= 0)) {
         error('modelos', i, 'flecha_del_arco', 'medidas', `Modelo ${m.id}: flecha del arco vacía o no numérica`);
         ok = false;
+      }
+      // Base del viento declarado (opcional hasta que la den los fabricantes)
+      if (!vacio(m.base_del_viento_declarado) && !BASES_VIENTO.includes(normalizarBase(m.base_del_viento_declarado))) {
+        error('modelos', i, 'base_del_viento_declarado', 'valor', `Modelo ${m.id}: base del viento declarado "${m.base_del_viento_declarado}" no válida; usar ${BASES_VIENTO_TEXTO}`);
       }
       modeloValido[m.id] = ok;
     });
