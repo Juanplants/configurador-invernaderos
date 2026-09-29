@@ -30,6 +30,7 @@ const PX = 10; // px por mm (a menos resolución Chromium redondea las cajas al 
   let fallos = 0, ok = 0;
   for (const caso of HOJAS.casos()) {
     const h = HOJAS.generar(caso);
+    if (!h) continue; // alzado y sección que van en hojas separadas: ya se prueban por separado
     await pagina.setContent(`<body style="margin:0"><svg id="s" xmlns="http://www.w3.org/2000/svg" width="${420 * PX}" height="${297 * PX}" viewBox="${h.viewBox}">${h.svg}</svg></body>`);
     const reales = await pagina.evaluate((px) => {
       const s = document.getElementById('s').getBoundingClientRect();

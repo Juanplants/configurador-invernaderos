@@ -133,6 +133,21 @@ const textoDe = (c) => [...c.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)].map(m => m[1
   comprobar('nombre de la hoja suelta', suelta.nombre === `26JD001_04-seccion_${hoy}.pdf`, suelta.nombre);
   comprobar('hoja suelta: 1 página, la sección', suelta.pdf.contenidos.length === 1 && textoDe(suelta.pdf.contenidos[0]).includes('SECCI'));
 
+  // 6 naves: alzado frontal y sección caben a la misma escala → una hoja (02) y cuatro en total
+  await irA(pagina, 'geometria');
+  await pagina.fill('#num-naves', '6');
+  await irA(pagina, 'salidas');
+  const junto = await bajar('#btn-pdf-todos');
+  const tJunto = junto.pdf.contenidos.map(textoDe);
+  comprobar('6 naves: 4 páginas', junto.pdf.contenidos.length === 4, `${junto.pdf.contenidos.length}`);
+  comprobar('6 naves: la 2 es alzado y sección, con los dos títulos', tJunto[1].includes('ALZADO Y SECCI') && tJunto[1].includes('ALZADO FRONTAL') && tJunto[1].includes('SECCIÓN TRANSVERSAL') && tJunto[1].includes('PLANO N.º | 02 |'));
+  comprobar('6 naves: números 01 a 04 en los cajetines', ['01', '02', '03', '04'].every((n, i) => tJunto[i].includes(`PLANO N.º | ${n} |`)) && tJunto[3].includes('EMPLAZAMIENTO'));
+  await pagina.click('.tab[data-vista="seccion"]');
+  const conjunta = await bajar('#btn-pdf-hoja');
+  comprobar('hoja suelta desde la pestaña sección: la conjunta', conjunta.nombre === `26JD001_02-alzado-frontal-y-seccion_${hoy}.pdf` && conjunta.pdf.contenidos.length === 1, conjunta.nombre);
+  await pagina.click('.tab[data-vista="alzado-frontal"]');
+  comprobar('la pestaña alzado frontal muestra la misma hoja', (await pagina.locator('#plan').innerHTML()).includes('ALZADO Y SECCI'));
+
   comprobar('sin peticiones fuera del equipo', externas.length === 0, externas.join(', '));
   comprobar('sin errores de JavaScript', errores.length === 0, errores.join(' | '));
   await navegador.close();

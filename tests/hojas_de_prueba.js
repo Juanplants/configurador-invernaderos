@@ -20,7 +20,9 @@ const path = require('path');
 
 // Textos largos a propósito para forzar recortes en el cajetín
 const PROYECTO = { cliente: 'Explotación Agrícola Hermanos Martínez Fernández', codigo: '26JD001', ubicacion: 'Paraje Los Llanos, El Ejido (Almería)' };
-const FUNCION = { planta: PLANTA.planta, alzadoFrontal: TRANSVERSAL.alzadoFrontal, alzadoLateral: LATERAL.alzadoLateral, seccion: TRANSVERSAL.seccion, emplazamiento: EMPLAZAMIENTO.emplazamiento };
+const JUEGO = require('../js/planos/juego.js');
+const FUNCION = { planta: PLANTA.planta, alzadoFrontal: TRANSVERSAL.alzadoFrontal, alzadoLateral: LATERAL.alzadoLateral, seccion: TRANSVERSAL.seccion, emplazamiento: EMPLAZAMIENTO.emplazamiento,
+  alzadoSeccion: TRANSVERSAL.alzadoYSeccion };
 const VENTANA = (lineas, g) => (lineas ? { lineas, hoja: g.ancho_hoja, rendija: Math.min(1, g.ancho_hoja) } : null);
 
 function casos() {
@@ -65,6 +67,23 @@ function casos() {
     lista.push(Object.assign({ nombre: n('parcela más ancha que larga'), parcela: { largo: g.largo + 10, ancho: g.largo + 60, orientacion: 350 } }, b));
     lista.push(Object.assign({ nombre: n('pegado al lindero'), parcela: { largo: g.largo, ancho: g.ancho_total + 20, orientacion: 0 } }, b));
     lista.push(Object.assign({ nombre: n('no cabe'), parcela: { largo: g.largo - 12, ancho: g.ancho_total + 6, orientacion: 120 } }, b));
+  }
+  // Alzado frontal y sección en una hoja: 5 y 10 naves (caben a la misma escala), con
+  // las tres ventanas y puertas; 15 naves interrumpidas y 1-3 naves no caben (van aparte)
+  for (const modelo of catalogo.modelos) {
+    for (const naves of [5, 10]) {
+      for (const tramos of [10, 60]) {
+        const g = GEO.calcular(modelo, { naves, tramos });
+        for (const lineas of [0, 1, 2]) {
+          lista.push({ vista: 'alzadoSeccion', nombre: `alzado y sección ${modelo.id} ${naves} naves × ${tramos} tramos, ${['techo cerrado', 'una hoja', 'mariposa'][lineas]}`,
+            modelo, naves, tramos, g, ventana: VENTANA(lineas, g), puertas: PUERTAS(lineas + 1), debeJuntarse: true });
+        }
+      }
+    }
+    for (const naves of [1, 3, 15]) {
+      const g = GEO.calcular(modelo, { naves, tramos: 20 });
+      lista.push({ vista: 'alzadoSeccion', nombre: `alzado y sección ${modelo.id} ${naves} naves (en hojas separadas)`, modelo, naves, tramos: 20, g, ventana: VENTANA(2, g), debeJuntarse: false });
+    }
   }
   // Emplazamiento sobre polígono: invernadero colocado por el optimizador (encajar)
   const ejemplo = PARCELA.leer(fs.readFileSync(path.join(__dirname, 'datos', 'parcela_irregular.gml'), 'utf8'), 'parcela_irregular.gml');
@@ -114,4 +133,4 @@ function datos(caso) {
 }
 const generar = (caso) => FUNCION[caso.vista](datos(caso));
 
-module.exports = { casos, parcelaConHueco, PARCELA, OPTIMIZADOR, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, EMPLAZAMIENTO, GEO, catalogo };
+module.exports = { casos, JUEGO, parcelaConHueco, PARCELA, OPTIMIZADOR, generar, datos, PUERTAS, letra: PLANTA.letra, HOJA, PLANTA, TRANSVERSAL, LATERAL, EMPLAZAMIENTO, GEO, catalogo };
