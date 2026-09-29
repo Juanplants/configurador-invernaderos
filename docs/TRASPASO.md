@@ -17,7 +17,7 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `datos/cte_se_ae.json`, `datos/municipios_cte.csv` → `datos/municipios.js` | Normativa del CTE DB SE-AE (viento, categorías de terreno, tablas E.2 y 3.8) y tabla de municipios opcional (vacía). Formato en `datos/LEEME_municipios.md`; se juntan con `node herramientas/municipios_a_js.js` |
 | `js/pasos.js` | Lógica del flujo de 6 pasos (paso actual, visitados, Anterior/Siguiente, saltar a un visitado) |
 | `js/planos/hoja.js` | **Planos A3** (fase 4): hoja, escala, registro de textos, cotas, rótulos, leyenda y cajetín comunes, perfil del arco |
-| `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js` | Hojas 01 planta, 02 alzado frontal, 03 alzado lateral, 04 sección transversal, 05 emplazamiento |
+| `js/planos/planta.js`, `transversal.js`, `lateral.js`, `emplazamiento.js`, `juego.js` | Hojas de planta, alzado frontal, alzado lateral, sección transversal (o alzado y sección juntos) y emplazamiento; `juego.js` decide cuáles van y su número |
 | `js/exportar.js` | Exportación de las hojas a **PDF vectorial A3** (escala real al imprimir en A3 al 100 %) |
 | `js/proyecto.js` | **Guardar y abrir proyecto** (.json) con la identidad del catálogo (fase 5) |
 | `js/excel.js` | **Lista de materiales en Excel** (SheetJS): hoja con precios y hoja de petición de oferta sin precios (fase 5) |
@@ -34,7 +34,7 @@ Para retomar el trabajo en otra conversación o con otra persona. Leer junto a `
 | `tests/referencia.py` | Implementación de referencia independiente en Python → `tests/esperado.json` |
 | `tests/pruebas.js` | Pruebas del motor (147 comprobaciones) |
 | `tests/importacion.js` | Pruebas del importador (36): plantilla correcta sin errores e igual al JSON de Python; copia con errores provocados |
-| `tests/planos.js` | Pruebas de las cinco hojas (234 comprobaciones, 225 hojas): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte; con parcela real, norte arriba (o la hoja girada solo si así cabe a mayor escala), invernadero con su orientación real y a escala, distancia mínima exacta, cumple / no cumple / no cabe, rótulo de la distancia sin cruzar el invernadero |
+| `tests/planos.js` | Pruebas de las hojas (271 comprobaciones, 255 hojas, 24 de ellas alzado y sección juntos; juego de planos y numeración): cero solapes en 1/2/5/10 naves × 10/20/60 tramos, dibujo ≥ 50 % del espacio, escala de la serie y la mayor que vale, textos en WinAnsi, lado largo horizontal, alzados enteros o interrumpidos según la regla, puertas; en la sección, arco, alturas y ventana cenital; en el emplazamiento, encaje, distancias a linderos y norte; con parcela real, norte arriba (o la hoja girada solo si así cabe a mayor escala), invernadero con su orientación real y a escala, distancia mínima exacta, cumple / no cumple / no cabe, rótulo de la distancia sin cruzar el invernadero |
 | `tests/hojas_de_prueba.js` | Casos comunes a las pruebas de planos (225 hojas, 17 sobre parcela real: norte-sur, este-oeste, oblicuo a 35° y 125°, con hueco, sin camino, casi llena, no cabe, no cumple) |
 | `tests/pasos.js` | Lógica del flujo (16): orden y nombres = apartado 2 de la especificación, avanzar, retroceder, saltar solo a visitados, abrir proyecto |
 | `tests/pasos_navegador.js` | El flujo en la app sin conexión (76): un paso a la vez, barra, Anterior/Siguiente, el plano visible en todos, **cada control en su paso y funcionando**, resumen corto, marca de avisos, aptitud por modelo, abrir proyecto (se omite sin Playwright) |
@@ -116,7 +116,8 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **Alzado lateral:** ventana cenital del 2.º al penúltimo pórtico (`long_ventana_cenital`) y ventana lateral si la hay (posición orientativa). Sus rótulos son opcionales: con 60 tramos a 1:1000 las burbujas no dejan paso; el dato va siempre en las notas.
 - **PDF** (`js/exportar.js`): «Descargar planos (PDF A3)» genera un PDF con todas las hojas y «Esta hoja (PDF)» la pestaña actual; nombre `<código>_planos_<AAAA-MM-DD>.pdf` o `<código>_<nº>-<hoja>_<AAAA-MM-DD>.pdf`. Cada hoja es una página A3 apaisada con el SVG en mm 1:1 (vectorial, Helvetica); impresa en A3 «al 100 % / tamaño real» la escala del cajetín es exacta; el PDF pide al visor no reescalar.
 - **En espera de datos del fabricante:** detalles constructivos y cimentación (no empezar hasta tenerlos).
-- **Estética (pendiente, no implementado):** en los alzados sobra espacio vertical por la forma alargada del invernadero. Cuando se retoquen los planos, valorar juntar alzado frontal y sección transversal en una misma hoja A3.
+- **Alzado frontal y sección en una hoja** (`PLANOS_A3.alzadoYSeccion`): si por separado salen a la misma escala (y con las mismas naves) y así caben en media hoja cada uno, van juntos: alzado arriba, sección abajo, cada uno con su título, leyenda y notas comunes, cajetín «ALZADO Y SECCIÓN». Si no, en hojas separadas como antes (1–3 naves, a 1:100, no caben en media hoja; 15 naves interrumpidas tampoco). No se pierde escala.
+- **Juego de planos** (`js/planos/juego.js`, `PLANOS_A3.juego`): decide las hojas, su orden y su número. Números correlativos: 01 planta, 02 alzado frontal (y sección), 03 alzado lateral, 04 sección si va aparte, y el emplazamiento el último (04 o 05), solo con parcela. Lo usan las pestañas (las de alzado frontal y sección muestran la hoja conjunta), el PDF (archivo `<código>_02-alzado-frontal-y-seccion_<fecha>.pdf` para la hoja suelta) y la propuesta (índice con número y escala).
 
 ## Interfaz en 6 pasos (fase 5)
 
@@ -162,7 +163,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 
 ## Siguientes pasos (en orden)
 
-1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 cuando se pueda descargar de `cdn.sheetjs.com` (instrucciones en `lib/LEEME.md`).
+1. ~~**Fase 1 — importador en el navegador**~~ **Hecho** (2026-09-28): ver «Cargar un catálogo». Pendiente menor: actualizar SheetJS a 0.20.3 en cuanto el usuario pase el archivo (desde aquí no se llega a `cdn.sheetjs.com`): `node herramientas/cambiar_sheetjs.js <archivo>` lo comprueba y lo cambia (ver `lib/LEEME.md`).
 2. ~~**Conectar el motor a la interfaz** de la v0.3~~ **Hecho** (2026-09-28): `calculos.js`, `modelos.js` y `opciones.js` retirados. Modelos, alturas/anchos/separaciones admitidos, opciones de envolvente (grupos de alternativas y opcionales), zonas de obra local, avisos, lista de materiales con «ver cálculo» y propuesta salen del catálogo y del motor. Los planos dibujan con la geometría del motor y rotulan los perfiles del catálogo.
 3. **Fase 3 — calibración** en cuanto llegue una lista de materiales estándar con pesos (CFGET y Ruineng la han prometido): volcarla en la plantilla y ajustar reglas hasta ≤ 5 % en acero total.
 4. **Fase 4 — planos** según el apartado 6 de la especificación: planta, alzados, sección, emplazamiento y PDF hechos (ver «Planos»); detalles y cimentación esperan datos del fabricante.
