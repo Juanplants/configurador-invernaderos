@@ -193,7 +193,7 @@
     }
   },
   "capitales": {
-    "nota": "Tabla 3.8: sobrecarga de nieve en capitales de provincia y ciudades autónomas (altitud en m, sk en kN/m²).",
+    "nota": "Tabla 3.8: sobrecarga de nieve en capitales de provincia y ciudades autónomas (altitud en m, sk en kN/m²). Según el apartado 3.5.2 del CTE DB SE-AE, en capitales se toma esta tabla y en otras localidades el anejo E (tabla E.2): no tienen por qué coincidir (p. ej. Ciudad Real 640 m / 0,6 y Cuenca 1010 m / 1,0, comprobados en el PDF oficial).",
     "lista": [
       {
         "nombre": "Albacete",

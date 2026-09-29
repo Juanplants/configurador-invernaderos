@@ -130,7 +130,7 @@ Hojas A3 en milímetros (`viewBox 0 0 420 297`): impresas en A3 la escala del ca
 - **El CTE no tiene tabla por municipio**: la zona eólica (fig. D.1) y la zona de clima invernal (fig. E.2) solo vienen en mapas. En el paso 2 el usuario elige zona eólica (A/B/C), zona invernal (1–7) y altitud, con la nota «consulta las figuras D.1 y E.2 del CTE DB SE-AE». Atajo: las capitales de la tabla 3.8, que dan la altitud y la nieve.
 - **Datos** (`datos/cte_se_ae.json`, ver `datos/LEEME_municipios.md`):
   - viento (vb 26/27/29 m/s, qb 0,42/0,45/0,52 kN/m²) y categorías de terreno (k, L, Z), contrastados por el usuario con el documento oficial;
-  - tablas E.2 y 3.8, extraídas del PDF oficial por el usuario, sin contrastar desde este entorno (la red no llega a codigotecnico.org). Una comprobación cruzada (`tests/sitio.js`) confirma que cada capital de la 3.8 coincide con la E.2 de alguna zona a ±0,1 kN/m²; con ±0,05 solo Ciudad Real (0,6 frente a 0,54) y Cuenca (1,0 frente a 0,9 o 1,24) no cuadran, a mirar en el PDF.
+  - tablas E.2 y 3.8, extraídas del PDF oficial por el usuario, sin contrastar desde este entorno (la red no llega a codigotecnico.org). Ciudad Real (640 m / 0,6) y Cuenca (1010 m / 1,0) comprobados en el PDF oficial: según el apartado 3.5.2, en capitales se toma la tabla 3.8 y en otras localidades el anejo E, así que no tienen por qué coincidir con la E.2 (la comprobación cruzada de `tests/sitio.js` admite ±0,1 kN/m²).
 - **Viento**: vb de la zona en km/h, comparado con el viento declarado con el invernadero cerrado (decisión confirmada). ce de la categoría a la altura de cumbrera y qe = qb · ce, informativos.
 - **Nieve**:
   - con capital, sk de la tabla 3.8;
